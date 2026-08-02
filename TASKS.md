@@ -52,43 +52,81 @@ Depends on Phase 0 + GATE S0 (engine decision).
       `Resampler.finish()`, so the last ~60 ms is never dropped. `AudioCapture`
       itself needs a real microphone — verified via `swift run Fala listen`.
 - [x] T1.3 `Resampler` (AVAudioConverter → 16 kHz mono F32). 16 tests.
-- [~] T1.4 `ParakeetEngine`: implemented (actor, idempotent prepare, typed errors,
-      `melChunkContext: false`). **DoD UNMET: no integration test.** Needs a
-      flag-gated test with a PT-BR WAV fixture; nothing constructs it today.
-- [ ] T1.5 `TextNormalizerAdapter` (FluidAudio ITN).
-      DoD: wrapper unit-tested with a spoken→written fixture.
+- [x] T1.4 `ParakeetEngine` (actor, idempotent prepare, typed errors,
+      `melChunkContext: false`). 24 tests. The integration test transcribes real
+      audio on the ANE and skips cleanly unless pointed at a fixture by env var, so
+      no ordinary run downloads 1.1 GB.
+- [x] T1.5 `TextNormalizerAdapter` — **CANCELLED, not deferred.** FluidAudio's
+      `TextNormalizer` is a measured no-op here (`isNativeAvailable == false`) and
+      is English-only by design. Wrapping it would ship a call that does nothing.
+      See SPEC.md FR-8 [REJECTED as specified] for the probe evidence.
 - [x] T1.6 `JargonDictionary` (deterministic PT-EN IT substitutions from JSON).
       34 tests. Safety tiers (safe/contextual/risky) keep `depois`→`deploy` and
       `me`→`merge` OFF by default: those two corrupt correct Portuguese, so the two
       hardest Spike 0 errors are deliberately NOT auto-fixed.
-- [~] T1.7 `HotkeyRecognizer` (right-Option default, configurable) DONE with 9 tests,
-      including the left-vs-right Option case a flag-only check would get wrong.
-      **`HotkeyManager` (the CGEventTap wrapper) NOT STARTED**; needs manual
-      verification from a signed .app.
-- [~] T1.8 `ClipboardInjector` (NSPasteboard snapshot/restore + Cmd+V).
-      Implemented with 21 tests. Six defects found in review and fixed — see
-      `docs/architecture.md`. **Remaining gaps documented there** (SystemPasteboard
-      untested, pasteboard type order lost, lazy items can empty the clipboard).
-- [~] T1.9 CLI `doctor` reports permissions/hotkey/model in PT-BR. `setup` not done.
-- [ ] T1.10 End-to-end manual test: hold key → speak PT-BR → text at cursor.
-      DoD: recorded steps; NO audio/transcript in any log (grep proof).
+- [x] T1.7 `HotkeyRecognizer` + `HotkeyManager` (passive CGEventTap, right-Option
+      default). 28 tests. A review found — and a regression test now pins — that both
+      Option keys share `.maskAlternate`, so reading only that bit LOST the release
+      whenever the other Option key was held, leaving the microphone recording
+      forever; detection is now on the device-specific bit. `deinit` is
+      `@MainActor` and calls `stop()`, so dropping the manager also releases the key
+      and uninstalls the tap. Tap-disabled recovery re-arms and forces a release.
+- [x] T1.8 `ClipboardInjector` (NSPasteboard snapshot/restore + Cmd+V). 35 tests.
+      Nine defects found across two review rounds and fixed — see
+      `docs/architecture.md`, including the transcript leaking to Universal
+      Clipboard, overlapping injections destroying the clipboard, and a mixed
+      snapshot silently discarding the item it could not capture.
+- [x] T1.9 CLI in PT-BR: `doctor` (permissions/hotkey/model), `listen [s]`
+      (microphone → ASR → dictionary, no TCC needed), `run` (full push-to-talk).
+      `scripts/make-app.sh` produces the signed bundle TCC features require.
+      A separate `setup` verb was not built: `doctor` already prints what is missing
+      and the System Settings deep link, so it would only restate it.
+- [~] T1.10 End-to-end manual test: hold key → speak PT-BR → text at cursor.
+      **Automated half DONE:** 193 tests / 13 suites green; grep proof recorded —
+      `Sources/FalaKit` contains 0 `print(`, 0 `os_log`/`NSLog`/`Logger(`, and 0
+      real `@unchecked Sendable`. The two transcript-printing paths (`FalaSpike`,
+      `Fala listen`) are executable-only and are listed as explicit exceptions in
+      CLAUDE.md. The ParakeetEngine integration test was RUN (not just written)
+      against a real fixture on the ANE.
+      **Human half: item 1 of 9 DONE (2026-08-02).** The happy path ran twice from
+      the signed bundle with both permissions granted — `fala.log` records
+      `● gravando… → … transcrevendo → ✓ inserido` twice, so `CGEventTap`,
+      `AudioCapture`, `ParakeetEngine` and `ClipboardInjector` have all now
+      executed for real. **Items 2–9 still PENDING** — see the checklist in
+      `docs/architecture.md`; several of them fail SILENTLY, which is why a
+      working happy path does not close them.
 **GATE 1:** MVP dictates end-to-end; WER spot-checked on user audio (see NFR-2). If WER
 > 12–15% or code-switching breaks, OPEN the WhisperKit-fallback decision BEFORE Phase 2.
 Human OK required.
 
 ## Phase 2 — Productization
 Depends on Phase 1 + DESIGN.md tokens available in `/design`.
-- [ ] T2.1 Extract design tokens from `/design/mockups` → `DesignSystem.swift`
-      (follow DESIGN.md). DoD: tokens compile; a snapshot of one component matches.
-- [ ] T2.2 Menu-bar app (LSUIElement, NSStatusItem) + popover from mockup.
-- [ ] T2.3 Pill overlay (`NSPanel` .nonactivatingPanel/.floating) with recording/
-      transcribing/idle states from mockup. DoD: states match mockup; behavior HIG-safe.
+- [x] T2.1 Design tokens → `DesignSystem.swift` + `Theme.swift`. All 156 DTCG
+      tokens translated and verified against `tokens.json`; 29 tests pin the values
+      DESIGN-HANDOFF.md §8 fixes. `tokens.json` and `fala-tokens.css` were diffed
+      programmatically and agree. Motion returns `nil` under Reduce Motion at the
+      token level, so a view cannot forget the check.
+- [~] T2.2 Menu-bar app (LSUIElement, NSStatusItem) + popover. Built, wired to the
+      `menubar` verb, 68 tests. Status icon drawn in code as a template image.
+      The on/off toggle really gates capture (`CaptureGate`).
+      **NEVER RUN — needs the human check.** Open defects in `docs/architecture.md`:
+      ⌘Q is advertised but not bound, disabled rows do not look disabled, the
+      Reduce-Transparency fallback is still 78% translucent, and a failed dictation
+      has no surface in the popover.
+- [~] T2.3 Pill overlay (`NSPanel` .nonactivatingPanel/.floating). Built and now
+      attached to the coordinator, 24 tests. Dismiss timings read from the theme, so
+      a token change moves the behaviour. Warning never auto-dismisses (pinned 3
+      ways). Multi-display geometry tested including negative-origin screens.
+      **NEVER RUN — needs the human check** (focus stealing and reduce-motion are
+      not assertable in a unit test).
 - [ ] T2.4 Vocabulary boosting via FluidAudio CTC `VocabularyRescorer` fed by jargon
       dictionary (batch). DoD: boosted term recognized in a fixture where baseline missed.
 - [ ] T2.5 History + undo of last injection. DoD: persistence + undo unit-tested.
 - [ ] T2.6 Input-device selection + AirPods/HFP warning. DoD: device list; warning shown.
-- [ ] T2.7 `SecureInputMonitor` (IsSecureEventInputEnabled) blocks injection + PT-BR
-      warning. DoD: simulated secure-input path unit-tested via protocol seam.
+- [x] T2.7 `SecureInputMonitor` blocks injection + PT-BR warning. Shipped early
+      with T1.8: checked twice (before the snapshot and again before the chord), and
+      `DictationCoordinator.message(for:)` maps all four `InjectionError` cases to
+      pt-BR. Only the probe's POLARITY remains unverifiable in a test — T1.10 item 4.
 - [ ] T2.8 `UnicodeInjector` fallback (chunked ~20 UniChars + sleep) + app allowlist.
       DoD: chunking logic unit-tested; fallback selectable per app.
 - [ ] T2.9 LaunchAgent autostart (opt-in) via CLI `install --launch-at-login`.

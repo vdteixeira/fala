@@ -37,7 +37,7 @@ struct Spike {
       exit(1)
     }
 
-    print("Loading Parakeet TDT v3 (downloads ~1.1 GB on first run)...")
+    print("Loading Parakeet TDT v3 (downloads ~480 MB on first run)...")
     let models = try await AsrModels.downloadAndLoad(version: .v3)
     // Must match ParakeetEngine's config or the measurement describes a different
     // system than the one that ships — see the comment there on melChunkContext.

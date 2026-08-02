@@ -64,6 +64,16 @@ public enum AudioCaptureError: Error, Equatable, Sendable {
   case voiceProcessingEnabled
 }
 
+/// Microphone capture, behind a protocol so `DictationCoordinator` can be tested
+/// without a microphone or TCC.
+public protocol AudioCapturing: Sendable {
+  func start() async throws
+  /// Ends the utterance and returns it as 16 kHz mono Float32.
+  func stop() async throws -> AudioBuffer
+  /// Aborts without producing audio (error paths, teardown).
+  func cancel() async
+}
+
 /// Microphone capture for one push-to-talk utterance (SPEC.md FR-2, FR-3, FR-4).
 ///
 /// `start()` on hotkey down, `stop()` on hotkey up; `stop()` returns the whole
@@ -77,7 +87,7 @@ public enum AudioCaptureError: Error, Equatable, Sendable {
 /// - **Native format in, 16 kHz out** (FR-2). The mic is tapped at whatever it
 ///   offers; `Resampler` does the conversion and the down-mix.
 /// - **~60 s of headroom** (FR-4), so a long utterance is never truncated.
-public actor AudioCapture {
+public actor AudioCapture: AudioCapturing {
   private let engine = AVAudioEngine()
   private let resampler: Resampler
   private var buffer: RingBuffer

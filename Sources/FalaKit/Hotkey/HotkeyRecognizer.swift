@@ -22,10 +22,27 @@ public enum Hotkey: String, Sendable, CaseIterable, Codable {
     }
   }
 
-  /// The modifier bit that is set while the key is held.
+  /// The generic modifier bit — shared by BOTH keys of a pair. Not enough on its
+  /// own to tell held from released; see `deviceFlag`.
   public var flag: CGEventFlags {
     switch self {
     case .rightOption, .leftOption: return .maskAlternate
+    case .fn: return .maskSecondaryFn
+    }
+  }
+
+  /// The device-dependent bit identifying THIS physical key.
+  ///
+  /// `.maskAlternate` is set while EITHER Option key is down, so deriving
+  /// held/released from it loses the release when the other Option key is also
+  /// held: the mic would keep recording with no release ever arriving. These are
+  /// the `NX_DEVICE*` masks from IOKit's event system, which CoreGraphics passes
+  /// through unchanged in `CGEventFlags`.
+  public var deviceFlag: CGEventFlags {
+    switch self {
+    case .leftOption: return CGEventFlags(rawValue: 0x20)  // NX_DEVICELALTKEYMASK
+    case .rightOption: return CGEventFlags(rawValue: 0x40)  // NX_DEVICERALTKEYMASK
+    // Fn has no left/right variant, so the generic bit already identifies it.
     case .fn: return .maskSecondaryFn
     }
   }
@@ -38,6 +55,11 @@ public enum Hotkey: String, Sendable, CaseIterable, Codable {
     case .fn: return "Fn"
     }
   }
+
+  /// The flags macOS reports while exactly this key is held: the generic bit plus
+  /// the device-specific one. Mostly a convenience for tests, which would
+  /// otherwise hand-assemble raw masks and drift from reality.
+  public var heldFlags: CGEventFlags { [flag, deviceFlag] }
 
   public var conflictsWithSystemShortcut: Bool { self == .fn }
 }
@@ -70,7 +92,8 @@ public struct HotkeyRecognizer: Sendable, Equatable {
   ///   repeats matters: the audio pipeline must not restart mid-utterance.
   public mutating func handleFlagsChanged(keyCode: CGKeyCode, flags: CGEventFlags) -> HotkeyPhase? {
     guard keyCode == hotkey.keyCode else { return nil }
-    let nowHeld = flags.contains(hotkey.flag)
+    // Device-specific bit, NOT the shared `.maskAlternate` — see `deviceFlag`.
+    let nowHeld = flags.contains(hotkey.deviceFlag)
     guard nowHeld != isHeld else { return nil }
     isHeld = nowHeld
     return nowHeld ? .pressed : .released

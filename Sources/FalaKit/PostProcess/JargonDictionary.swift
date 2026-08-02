@@ -341,6 +341,18 @@ public struct JargonDictionary: Sendable {
     return tokens
   }
 
+  /// The identity of a rule: the folded word sequence `apply(to:)` matches on,
+  /// joined by single spaces. Two entries share an identity exactly when they
+  /// would fire on the same input, which is what makes a user override written
+  /// as "Posterg" or "com  pose" replace the bundled "posterg" / "com pose"
+  /// (see `JargonOverride`). Empty when `from` has no word characters.
+  ///
+  /// Derived from `tokenize`/`fold` on purpose: an override that used its own
+  /// notion of equality would drift from the matcher without any test noticing.
+  static func mergeKey(for from: some StringProtocol) -> String {
+    tokenize(String(from)).map(\.folded).joined(separator: " ")
+  }
+
   /// Case- and diacritic-insensitive normal form. The locale is pinned so the
   /// result never depends on the user's regional settings (notably the Turkish
   /// dotless-i rule).
@@ -351,7 +363,9 @@ public struct JargonDictionary: Sendable {
     )
   }
 
-  private static func describe(_ error: DecodingError) -> String {
+  /// Shared with `JargonOverride` so both file formats report a decoding failure
+  /// the same way.
+  static func describe(_ error: DecodingError) -> String {
     switch error {
     case .keyNotFound(let key, _): return "missing key '\(key.stringValue)'"
     case .typeMismatch(_, let context), .valueNotFound(_, let context):

@@ -45,7 +45,20 @@ global hotkey, speak, release; the transcript is inserted at the cursor in any a
   FluidAudio version before relying on it.
 
 ### Post-processing
-- **FR-8 [CONFIRMED]** Inverse Text Normalization via FluidAudio's `TextNormalizer`.
+- **FR-8 [REJECTED as specified — 2026-08-02]** Inverse Text Normalization via
+  FluidAudio's `TextNormalizer` does not work for this product. Measured, not
+  inferred: the type reports `isNativeAvailable == false` in this build, so it is a
+  pure no-op — it returned all six probe inputs byte-identical, including the
+  English `"two hundred thirty two dollars"` and `"five dollars and fifty cents"`
+  from its own documentation. And even with the native NeMo library present it is
+  documented as English-only (spoken-form examples, `$`/US date formats, and an
+  English-only ambiguous-word set: period, dash, colon, pipe, slash, dot, plus,
+  hash, percent). Nothing in it is locale-aware.
+  Consequences: (a) do not wire it in — it would add a call and a dependency for
+  zero effect; (b) PT-BR spoken numbers are NOT converted by us, so whatever the
+  ASR model emits is what ships; (c) if written-form output is wanted
+  ("trezentos" → "300"), it needs a PT-BR implementation of our own, which is new
+  scope and not part of v1.
 - **FR-9 [CONFIRMED]** A configurable, deterministic substitution dictionary for PT-EN
   IT jargon (e.g., "deploy", "endpoint", "Kubernetes", library names). Ships with a
   default `Resources/dictionaries/it-jargon.json`; user-editable.
@@ -130,7 +143,10 @@ global hotkey, speak, release; the transcript is inserted at the cursor in any a
     never edited after `FalaSpike --suggest` generated them (modification time ==
     creation time, verified), so 22 of 70 reference words are the model's own
     output graded against itself — and they are exactly the words creating the
-    margin below 12%. (b) S0.2 asks for 15–20 fixtures; 6 were recorded.
+    margin below 12%. `Audio_5`'s reference reads "300 milissegundos" where the
+    script says "trezentos"; that digit came from the Parakeet model itself, NOT
+    from ITN — `FalaSpike` never invoked `TextNormalizer`, and per FR-8 above it
+    is a no-op anyway. (b) S0.2 asks for 15–20 fixtures; 6 were recorded.
     (c) `Audio_1` — which carries the two hardest errors (deploy→"depois",
     merge→"me") — was recorded 91 minutes earlier at ~238 kbps versus ~63 kbps
     for the rest, so it is not comparable and has no replication.

@@ -12,10 +12,18 @@ Verified against the checked-out source at `.build/checkouts/FluidAudio` (2026-0
 import FluidAudio
 
 let models = try await AsrModels.downloadAndLoad(version: .v3)   // ~1.1 GB first run
-let manager = AsrManager(config: .default)
+
+// NOT `.default` — it sets `melChunkContext: true`, which makes the decoder drift
+// back to its English-biased prior on v3 multilingual long-form batch audio
+// (FluidAudio's own doc says to use `false` for exactly this case). Only bites on
+// utterances past the 15 s chunk threshold, so short fixtures will not reveal it.
+let manager = AsrManager(config: ASRConfig(melChunkContext: false))
 try await manager.loadModels(models)
 
-var state = TdtDecoderState.make()
+// NOT `TdtDecoderState.make()` — it `fatalError`s when the ANE-aligned allocation
+// fails, and library code must never kill the host app (CLAUDE.md). Use the
+// throwing initializer that `make()` wraps.
+var state = try TdtDecoderState(decoderLayers: await manager.decoderLayerCount)
 let result = try await manager.transcribe(url, decoderState: &state, language: .portuguese)
 // also: transcribe(_ samples: [Float], ...), transcribe(_ buffer: AVAudioPCMBuffer, ...)
 // ASRResult: text, confidence, duration, processingTime, tokenTimings?, ctc*Terms?
@@ -35,7 +43,10 @@ let result = try await manager.transcribe(url, decoderState: &state, language: .
   format, let AudioConverter resample.
 
 ## ITN & vocabulary
-- `TextNormalizer` — inverse text normalization (spoken → written), FR-8.
+- `TextNormalizer` — **DO NOT USE.** SPEC.md FR-8 is [REJECTED as specified]:
+  measured here, `isNativeAvailable == false` makes it a pure no-op (it returned
+  six probe inputs byte-identical, including its own English examples), and it is
+  English-only by design anyway. Wiring it in ships a call that does nothing.
 - CTC vocabulary boosting (batch only): `VocabularyRescorer` / CTC keyword
   spotting under `ASR/Parakeet/SlidingWindow/CustomVocabulary/`. Feed from the
   jargon dictionary (FR-20 / T2.4). `ASRResult.ctcDetectedTerms/ctcAppliedTerms`
@@ -49,4 +60,9 @@ let result = try await manager.transcribe(url, decoderState: &state, language: .
 ## Version bumps
 Never float. To bump: change `exact:` in Package.swift, re-verify (a) the
 `language` parameter semantics, (b) `transcribe`/`loadModels` signatures,
-(c) cache path, then update this skill.
+(c) cache path, (d) **that no FluidAudio log line on the batch TDT path
+interpolates decoded text** — grep every `logger.*` under
+`ASR/Parakeet/SlidingWindow/TDT/`. 0.15.5 already ships such a line on the
+STREAMING path (`SlidingWindowAsrManager.swift`), which this app does not use; if
+one lands on the batch path it silently breaks NFR-1/LGPD, and this checklist is
+the only thing guarding it (it is not unit-testable). Then update this skill.

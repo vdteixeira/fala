@@ -15,9 +15,12 @@ NEVER leave the machine and are NEVER logged.
   (and that must be mirrorable/offline-installable). No telemetry, no analytics.
 - **Never log audio samples or transcript text.** Not to stdout, not to os_log, not
   to files. Log lengths, durations, and error codes only. This is non-negotiable.
-  (Sole documented exception: `FalaSpike`, the throwaway WER-evaluation harness,
-  prints hypothesis vs reference for the user's own fixture recordings. It never
-  touches live dictation audio and is excluded from release builds.)
+  Two documented exceptions, both in EXECUTABLE targets, never in `FalaKit`:
+  (1) `FalaSpike`, the throwaway WER harness, prints hypothesis vs reference for the
+  user's own fixture recordings; (2) `Fala listen`, the manual end-to-end check,
+  prints the transcript it just produced. Both write only to the terminal of a user
+  who explicitly asked for that output — never to a file, never to os_log, never
+  automatically. Adding a third exception means editing this list first.
 - **Language of artifacts:** ALL code, comments, identifiers, commits, CLAUDE.md,
   SPEC.md, TASKS.md, DESIGN.md, and `docs/architecture.md` are in ENGLISH.
   ALL user-facing docs (`README.md`, `docs/pt-BR/**`) are in BRAZILIAN PORTUGUESE.

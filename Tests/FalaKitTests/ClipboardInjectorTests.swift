@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 import os
@@ -90,12 +91,13 @@ private actor FakePasteboard: PasteboardAccessing {
   }
 
   var currentText: String? {
-    guard let data = items.first?.representations[Self.stringType] else { return nil }
+    guard let data = items.first?.data(forType: Self.stringType) else { return nil }
     return String(data: data, encoding: .utf8)
   }
 
   static func item(_ text: String) -> PasteboardSnapshot.Item {
-    PasteboardSnapshot.Item(representations: [stringType: Data(text.utf8)])
+    PasteboardSnapshot.Item(
+      representations: [.init(type: stringType, data: Data(text.utf8))])
   }
 }
 
@@ -201,11 +203,12 @@ struct ClipboardInjectorTests {
   func roundTripPreservesRichContent() async throws {
     let rich = [
       PasteboardSnapshot.Item(representations: [
-        FakePasteboard.stringType: Data("oi".utf8),
-        "public.html": Data("<b>oi</b>".utf8),
+        .init(type: "public.rtf", data: Data("{\\rtf1 oi}".utf8)),
+        .init(type: "public.html", data: Data("<b>oi</b>".utf8)),
+        .init(type: FakePasteboard.stringType, data: Data("oi".utf8)),
       ]),
       PasteboardSnapshot.Item(representations: [
-        "public.png": Data([0x89, 0x50, 0x4E, 0x47])
+        .init(type: "public.png", data: Data([0x89, 0x50, 0x4E, 0x47]))
       ]),
     ]
     let pasteboard = FakePasteboard(items: rich)
@@ -214,7 +217,34 @@ struct ClipboardInjectorTests {
     try await injector.inject("transcrição")
 
     let restored = await pasteboard.items
+    // `[Representation]` equality is order-sensitive, so this now fails if the
+    // representations come back reordered — see the dedicated test below.
     #expect(restored == rich)
+  }
+
+  /// A reader takes the FIRST pasteboard type it understands, so restoring
+  /// `[rtf, html, plain]` as `[plain, html, rtf]` turns the user's styled
+  /// clipboard into plain text on the next Cmd+V. The order is data, and the
+  /// old `[String: Data]` storage could not carry it.
+  @Test("Preserves the reader-preference order of the representations")
+  func preservesRepresentationOrder() async throws {
+    let ordered: [String] = [
+      "public.rtf", "public.html", "public.utf16-external-plain-text",
+      FakePasteboard.stringType, "public.png",
+    ]
+    let item = PasteboardSnapshot.Item(
+      representations: ordered.enumerated().map { index, type in
+        .init(type: type, data: Data([UInt8(index)]))
+      })
+    let pasteboard = FakePasteboard(items: [item])
+    let injector = makeInjector(pasteboard: pasteboard)
+
+    try await injector.inject("transcrição")
+
+    let restored = await pasteboard.items
+    #expect(restored.first?.representations.map(\.type) == ordered)
+    // The load-bearing property: the richest type stays ahead of plain text.
+    #expect(restored.first?.representations.first?.type == "public.rtf")
   }
 
   @Test("Restores an empty clipboard as empty")
@@ -332,6 +362,68 @@ struct ClipboardInjectorTests {
     await #expect(throws: InjectionError.accessibilityDenied) {
       try await injector.inject("texto")
     }
+  }
+
+  // MARK: Snapshot fidelity (promised / lazily provided items)
+
+  /// The clipboard holds a spreadsheet range or a promised file: every type it
+  /// advertises is a promise the owner never fulfils, so the snapshot captures
+  /// nothing. Writing the transcript would revoke the promise and destroy it.
+  /// Before the fidelity gate, that snapshot was indistinguishable from an empty
+  /// clipboard: the restore "succeeded" by wiping it and reported `.restored`.
+  @Test("Refuses to inject over a clipboard whose contents cannot be captured")
+  func refusesWhenSnapshotCannotBeCaptured() async throws {
+    let promised = PasteboardSnapshot.Item(
+      representations: [],
+      unreadableTypes: ["com.microsoft.Excel.range", "public.file-url"])
+    let pasteboard = FakePasteboard(items: [promised])
+    let keystrokes = FakePasteKeystrokes()
+    let injector = makeInjector(pasteboard: pasteboard, keystrokes: keystrokes)
+
+    await #expect(throws: InjectionError.self) {
+      try await injector.inject("transcrição")
+    }
+
+    // The refusal has to happen BEFORE the write: after it, the promise is gone.
+    let events = await pasteboard.events
+    let items = await pasteboard.items
+    let sendCount = await keystrokes.sendCount
+    #expect(events == [.snapshot])
+    #expect(items == [promised])
+    #expect(sendCount == 0)
+  }
+
+  /// Partial capture is not refused — the item survives, possibly downgraded —
+  /// but the outcome must not claim an exact restore.
+  @Test("Reports a partially captured clipboard as .restoredWithLoss")
+  func reportsPartiallyCapturedClipboard() async throws {
+    let partial = PasteboardSnapshot.Item(
+      representations: [.init(type: FakePasteboard.stringType, data: Data("antes".utf8))],
+      unreadableTypes: ["com.microsoft.Excel.range"])
+    let pasteboard = FakePasteboard(items: [partial])
+    let injector = makeInjector(pasteboard: pasteboard)
+
+    let outcome = try await injector.injectReportingRestore("transcrição")
+
+    let restoredText = await pasteboard.currentText
+    #expect(outcome == .restoredWithLoss(unreadableTypes: ["com.microsoft.Excel.range"]))
+    #expect(restoredText == "antes")
+  }
+
+  /// A degraded-but-present clipboard is not an injection failure: the paste
+  /// landed and nothing the injector could do would have saved those bytes.
+  @Test("A partial restore does not fail the injection")
+  func partialRestoreIsNotAnInjectionFailure() async throws {
+    let partial = PasteboardSnapshot.Item(
+      representations: [.init(type: FakePasteboard.stringType, data: Data("antes".utf8))],
+      unreadableTypes: ["public.tiff"])
+    let pasteboard = FakePasteboard(items: [partial])
+    let keystrokes = FakePasteKeystrokes()
+    let injector = makeInjector(pasteboard: pasteboard, keystrokes: keystrokes)
+
+    try await injector.inject("transcrição")
+
+    #expect(await keystrokes.sendCount == 1)
   }
 
   // MARK: Change-count discipline
@@ -555,5 +647,267 @@ struct SecureInputMonitorTests {
   func forwardsProbe(active: Bool) {
     let monitor = SecureInputMonitor(probe: { active })
     #expect(monitor.isSecureInputActive == active)
+  }
+}
+
+// MARK: - SystemPasteboard (against a real NSPasteboard)
+
+/// An `NSPasteboardItemDataProvider` that provides nothing.
+///
+/// This is the observable shape of a promised payload whose owner does not
+/// fulfil it — a spreadsheet range, a promised file, an app that has quit:
+/// `NSPasteboardItem.data(forType:)` returns nil for a type the item advertises.
+/// Modelled with a real provider rather than a fake so the test exercises the
+/// actual AppKit path `SystemPasteboard.snapshot()` walks.
+private final class UnfulfilledPromiseProvider: NSObject, NSPasteboardItemDataProvider {
+  func pasteboard(
+    _ pasteboard: NSPasteboard?,
+    item: NSPasteboardItem,
+    provideDataForType type: NSPasteboard.PasteboardType
+  ) {
+    // Deliberately empty: the promise is never honoured.
+  }
+}
+
+/// Real snapshot/restore against `NSPasteboard.withUniqueName()` — a private
+/// pasteboard that needs no TCC grant, no `NSApplication` and no GUI, and that
+/// never touches the user's own clipboard. Requires a running pasteboard server
+/// (i.e. a normal user session), which is why the suite pins itself to the main
+/// actor: AppKit pasteboard access is not documented as thread safe.
+@Suite("SystemPasteboard")
+@MainActor
+struct SystemPasteboardTests {
+  private static let rtf = NSPasteboard.PasteboardType("public.rtf")
+  private static let html = NSPasteboard.PasteboardType("public.html")
+  private static let concealed = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+  private static let promisedType = NSPasteboard.PasteboardType("com.fala.test.promised")
+
+  private func makeBoard() -> NSPasteboard { NSPasteboard.withUniqueName() }
+
+  private func types(of board: NSPasteboard) -> [[String]] {
+    (board.pasteboardItems ?? []).map { $0.types.map(\.rawValue) }
+  }
+
+  @Test("Round-trips a rich item and preserves its reader-preference type order")
+  func roundTripsRichItemPreservingOrder() async throws {
+    let board = makeBoard()
+    defer { board.releaseGlobally() }
+    let item = NSPasteboardItem()
+    item.setData(Data("{\\rtf1 olá}".utf8), forType: Self.rtf)
+    item.setData(Data("<b>olá</b>".utf8), forType: Self.html)
+    item.setData(Data("olá".utf8), forType: .string)
+    board.clearContents()
+    #expect(board.writeObjects([item]))
+    let originalTypes = types(of: board)
+
+    let sut = SystemPasteboard(pasteboard: board)
+    let snapshot = await sut.snapshot()
+
+    #expect(snapshot.items.count == 1)
+    #expect(snapshot.isFaithful)
+    #expect(snapshot.hasUnrecoverableItems == false)
+    // The snapshot carries the board's own order, not an arbitrary one.
+    #expect(snapshot.items.map { $0.representations.map(\.type) } == originalTypes)
+    #expect(snapshot.items.first?.representations.first?.type == Self.rtf.rawValue)
+
+    // Stand in for the injection: the transcript replaces everything.
+    _ = try await sut.write("transcrição")
+    #expect(board.data(forType: Self.rtf) == nil)
+
+    try await sut.restore(snapshot)
+
+    #expect(types(of: board) == originalTypes)
+    #expect(board.string(forType: .string) == "olá")
+    #expect(board.data(forType: Self.rtf) == Data("{\\rtf1 olá}".utf8))
+    #expect(board.data(forType: Self.html) == Data("<b>olá</b>".utf8))
+    // RTF must still outrank plain text, or the next Cmd+V pastes unstyled text.
+    #expect(types(of: board).first?.first == Self.rtf.rawValue)
+  }
+
+  @Test("Restores an empty clipboard as empty")
+  func restoresEmptyClipboardAsEmpty() async throws {
+    let board = makeBoard()
+    defer { board.releaseGlobally() }
+    board.clearContents()
+
+    let sut = SystemPasteboard(pasteboard: board)
+    let snapshot = await sut.snapshot()
+    #expect(snapshot.isEmpty)
+    #expect(snapshot.hasUnrecoverableItems == false)
+
+    _ = try await sut.write("transcrição")
+    #expect(board.string(forType: .string) == "transcrição")
+
+    try await sut.restore(snapshot)
+
+    #expect(board.pasteboardItems?.isEmpty ?? true)
+    #expect(board.string(forType: .string) == nil)
+  }
+
+  @Test("Tracks the pasteboard's change count")
+  func tracksChangeCount() async throws {
+    let board = makeBoard()
+    defer { board.releaseGlobally() }
+    let sut = SystemPasteboard(pasteboard: board)
+
+    let before = await sut.currentChangeCount()
+    let afterWrite = try await sut.write("transcrição")
+    let observed = await sut.currentChangeCount()
+
+    #expect(afterWrite > before)
+    #expect(observed == afterWrite)
+    #expect(observed == board.changeCount)
+  }
+
+  /// Regression guard on the privacy handling (NFR-1): the transcript is written
+  /// `.currentHostOnly` so Universal Clipboard cannot sync it off-device, and
+  /// carries the marker clipboard-history apps use to skip an item. Asserted,
+  /// not changed.
+  @Test("Marks the transcript with the concealed-type marker")
+  func marksTranscriptAsConcealed() async throws {
+    let board = makeBoard()
+    defer { board.releaseGlobally() }
+    let sut = SystemPasteboard(pasteboard: board)
+
+    _ = try await sut.write("transcrição")
+
+    let written = try #require(types(of: board).first)
+    #expect(written.contains(Self.concealed.rawValue))
+    #expect(board.string(forType: .string) == "transcrição")
+  }
+
+  // MARK: Promised (lazily provided) items
+
+  @Test("Flags an unfulfilled promise as an unreadable type")
+  func flagsUnfulfilledPromise() async throws {
+    let board = makeBoard()
+    defer { board.releaseGlobally() }
+    let provider = UnfulfilledPromiseProvider()
+    let item = NSPasteboardItem()
+    item.setDataProvider(provider, forTypes: [Self.promisedType])
+    board.clearContents()
+    #expect(board.writeObjects([item]))
+
+    let snapshot = await SystemPasteboard(pasteboard: board).snapshot()
+
+    let captured = try #require(snapshot.items.first)
+    #expect(snapshot.items.count == 1)
+    #expect(captured.representations.isEmpty)
+    #expect(captured.unreadableTypes == [Self.promisedType.rawValue])
+    #expect(captured.isUnrecoverable)
+    // The distinction the old snapshot could not express: NOT an empty clipboard.
+    #expect(snapshot.isEmpty == false)
+    #expect(snapshot.isFaithful == false)
+    #expect(snapshot.hasUnrecoverableItems)
+  }
+
+  /// The primitive must not turn "I captured nothing" into `clearContents()`:
+  /// that swaps the transcript the user can still paste for an empty clipboard.
+  @Test("Refuses to clear a clipboard whose contents it could not capture")
+  func refusesToClearUncapturedClipboard() async throws {
+    let board = makeBoard()
+    defer { board.releaseGlobally() }
+    let provider = UnfulfilledPromiseProvider()
+    let item = NSPasteboardItem()
+    item.setDataProvider(provider, forTypes: [Self.promisedType])
+    board.clearContents()
+    #expect(board.writeObjects([item]))
+
+    let sut = SystemPasteboard(pasteboard: board)
+    let snapshot = await sut.snapshot()
+    _ = try await sut.write("transcrição")
+
+    await #expect(throws: InjectionError.self) {
+      try await sut.restore(snapshot)
+    }
+    #expect(board.string(forType: .string) == "transcrição")
+  }
+
+  /// End-to-end on a real pasteboard: the user copied something we cannot
+  /// reproduce, so the injection is refused BEFORE the write and the clipboard
+  /// survives untouched. Previously this path wiped the clipboard and reported
+  /// `.restored`.
+  @Test("An injection over a promised clipboard is refused, leaving it intact")
+  func injectionOverPromisedClipboardIsRefused() async throws {
+    let board = makeBoard()
+    defer { board.releaseGlobally() }
+    let provider = UnfulfilledPromiseProvider()
+    let item = NSPasteboardItem()
+    item.setDataProvider(provider, forTypes: [Self.promisedType])
+    board.clearContents()
+    #expect(board.writeObjects([item]))
+    let changeCountBefore = board.changeCount
+
+    let keystrokes = FakePasteKeystrokes()
+    let injector = ClipboardInjector(
+      pasteboard: SystemPasteboard(pasteboard: board),
+      secureInput: FakeSecureInput(isSecureInputActive: false),
+      keystrokes: keystrokes,
+      delay: FakeDelay(),
+      pasteSettleDelay: .milliseconds(1))
+
+    await #expect(throws: InjectionError.self) {
+      try await injector.inject("transcrição")
+    }
+
+    #expect(await keystrokes.sendCount == 0)
+    #expect(board.changeCount == changeCountBefore)
+    #expect(types(of: board) == [[Self.promisedType.rawValue]])
+  }
+
+  /// Partial capture: the item advertises a promise AND a concrete preview. The
+  /// preview survives the round trip, the promise cannot, and the outcome says
+  /// so instead of claiming an exact restore.
+  @Test("A partially promised item survives as far as it can, and reports the loss")
+  func partiallyPromisedItemReportsLoss() async throws {
+    let board = makeBoard()
+    defer { board.releaseGlobally() }
+    let provider = UnfulfilledPromiseProvider()
+    let item = NSPasteboardItem()
+    item.setDataProvider(provider, forTypes: [Self.promisedType])
+    item.setString("prévia", forType: .string)
+    board.clearContents()
+    #expect(board.writeObjects([item]))
+
+    let injector = ClipboardInjector(
+      pasteboard: SystemPasteboard(pasteboard: board),
+      secureInput: FakeSecureInput(isSecureInputActive: false),
+      keystrokes: FakePasteKeystrokes(),
+      delay: FakeDelay(),
+      pasteSettleDelay: .milliseconds(1))
+
+    let outcome = try await injector.injectReportingRestore("transcrição")
+
+    #expect(outcome == .restoredWithLoss(unreadableTypes: [Self.promisedType.rawValue]))
+    #expect(board.string(forType: .string) == "prévia")
+    #expect(board.data(forType: Self.promisedType) == nil)
+  }
+
+  /// The mixed snapshot: one readable item plus one unfulfilled promise.
+  ///
+  /// The guard used to be `!writable.isEmpty`, which this case satisfies (the
+  /// readable item is writable), so `clearContents()` ran and the promised item
+  /// was destroyed with nothing written back — while the caller was told the
+  /// restore succeeded. Every other promised-item test uses a SINGLE item, so
+  /// none of them could see it.
+  @Test("A mixed snapshot is refused rather than partially destroyed")
+  func mixedSnapshotIsRefused() async throws {
+    let readable = PasteboardSnapshot.Item(
+      representations: [.init(type: "public.utf8-plain-text", data: Data("importante".utf8))],
+      unreadableTypes: [])
+    let promised = PasteboardSnapshot.Item(
+      representations: [], unreadableTypes: ["com.microsoft.Excel.range"])
+    let snapshot = PasteboardSnapshot(items: [readable, promised], changeCount: 1)
+
+    let board = makeBoard()
+    board.clearContents()
+    board.setString("o que o usuário copiou", forType: .string)
+    let pasteboard = SystemPasteboard(pasteboard: board)
+
+    await #expect(throws: InjectionError.self) {
+      try await pasteboard.restore(snapshot)
+    }
+    // The refusal must happen BEFORE clearContents, so the board is untouched.
+    #expect(board.string(forType: .string) == "o que o usuário copiou")
   }
 }

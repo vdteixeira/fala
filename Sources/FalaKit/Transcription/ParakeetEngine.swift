@@ -25,6 +25,16 @@ struct FluidAudioModelLoader: ParakeetModelLoading {
     // exactly this app. It only affects utterances past the 15 s chunk threshold,
     // which is why Spike 0 (≈7 s fixtures) never exercised it, but FR-4 sizes the
     // ring buffer for 60 s so long utterances are expected input.
+    //
+    // Re-verified against the pinned 0.15.5 checkout (2026-08-02): the flag is
+    // read only by `ChunkProcessor`, and `transcribeWithState` reaches that at
+    // all only when `samples.count > ASRConstants.maxModelSamples` (240_000 =
+    // 15.0 s at 16 kHz) — below it, audio takes the single-shot path and this
+    // setting is inert. Also note FluidAudio's doc oversells the `false` branch:
+    // in 0.15.5 it drops the 1280-sample prepend and switches to silence-aligned
+    // chunk starts, but `noMelWarmupPrefixFrames` is 0, so the "acoustic warmup"
+    // it mentions only exists under the opt-in `dualDecodeArbitration`, which
+    // stays off (it costs ≈1.1–1.5× and NFR-3 was measured without it).
     let manager = AsrManager(config: ASRConfig(melChunkContext: false))
     try await manager.loadModels(models)
     return manager
@@ -44,7 +54,7 @@ public actor ParakeetEngine: TranscriptionEngine {
   /// not condition the decoder, so it cannot pin PT-BR against EN or FR, which
   /// are all Latin. SPEC.md FR-7 revised the requirement for exactly this
   /// reason — treat it as best-effort mitigation, never as a guarantee.
-  private static let languageHint: Language = .portuguese
+  static let languageHint: Language = .portuguese
 
   private let loader: any ParakeetModelLoading
   private var manager: AsrManager?
@@ -149,6 +159,13 @@ public actor ParakeetEngine: TranscriptionEngine {
     do {
       let loaded = try await task.value
       manager = loaded
+      // Drop the completed task: `manager` is the cache from here on, and a
+      // retained finished Task would keep a second strong reference to the
+      // loaded models alive for the life of the engine. It also made
+      // `prepareIsIdempotent` pass for the wrong reason — a second `prepare()`
+      // hit the cached TASK, so the test could not tell whether `manager` had
+      // actually been populated.
+      loadTask = nil
       return loaded
     } catch {
       // A failed load must not poison the engine: the usual cause is a
@@ -170,12 +187,17 @@ public actor ParakeetEngine: TranscriptionEngine {
   // and indices — never audio samples and never decoded text. That invariant is
   // part of what a version bump must re-verify (see the `fluidaudio-asr` skill).
 
-  private static func mapModelFailure(_ error: any Error) -> TranscriptionError {
+  // `internal` rather than `private` only so `ParakeetEngineTests` can call them
+  // directly: both are pure functions, and the switch below is the one piece of
+  // logic here that neither a fake loader nor the flagged integration test can
+  // reach (every case except `.notInitialized` requires loaded CoreML models to
+  // provoke). Still invisible outside FalaKit, so the public API is unchanged.
+  static func mapModelFailure(_ error: any Error) -> TranscriptionError {
     if let error = error as? TranscriptionError { return error }
     return .modelUnavailable(reason: describe(error))
   }
 
-  private static func mapTranscriptionFailure(_ error: any Error) -> TranscriptionError {
+  static func mapTranscriptionFailure(_ error: any Error) -> TranscriptionError {
     if let error = error as? TranscriptionError { return error }
     guard let error = error as? ASRError else {
       return .transcriptionFailed(reason: describe(error))

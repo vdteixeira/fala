@@ -1,7 +1,8 @@
 {
   "$comment": "Default deterministic PT-EN IT jargon substitutions (SPEC.md FR-9, US-2). 'from' is a measured or expected ASR misrendering, 'to' is the canonical spelling. Matching is word-boundary anchored and case/diacritic-insensitive, so 'comite' also covers 'comitê' and no entry can match inside a longer word. User-editable: copy this file and load it with JargonDictionary.load(contentsOf:).",
   "$safety": "'safety' decides whether an entry is ACTIVE. safe = 'from' is not Brazilian Portuguese, so it cannot overwrite correct text. contextual = 'from' is plausible Portuguese, so it only fires when one of its contextBefore/contextAfter words is within 3 word tokens on that side. risky = 'from' is common Portuguese with no disambiguating context; excluded unless the caller passes includeRisky: true. Never promote an entry to 'safe' without checking that 'from' is not a real Portuguese word.",
-  "$provenance": "Terms marked 'Spike 0 RUN 1' were produced by FluidAudio 0.15.5 + Parakeet TDT 0.6B v3 on the user's own recordings, 2026-08-02. See SPEC.md section 6.",
+  "$provenance": "Terms marked 'Spike 0 RUN 1' were produced by FluidAudio 0.15.5 + Parakeet TDT 0.6B v3 on the user's own recordings, 2026-08-02. See SPEC.md section 6. Terms marked 'Live 2026-08-02' were observed in ordinary dictation on the same day, i.e. outside the scored fixture set: only the mangled token was recorded, not the sentence around it, so no entry from that batch may claim context evidence it does not have.",
+  "$refusedByDesign": "Some measured manglings are recorded as 'risky' instead of being fixed, because 'from' is a word the user might genuinely have said: 'post' (Postgres), 'steak' (staging), 'proced' (Postgres). Turning any of them on rewrites correct text. Do not promote them without new evidence — see each entry's note.",
   "entries": [
     {
       "from": "docker com pose",
@@ -19,8 +20,36 @@
       "from": "com pose",
       "to": "Compose",
       "safety": "contextual",
-      "contextBefore": ["docker"],
+      "contextBefore": [
+        "docker"
+      ],
       "note": "Spike 0 RUN 1. 'com pose' is legitimate Portuguese ('veio com pose de chefe'), so it needs Docker nearby. Catches renderings the three-word entry misses, e.g. 'o docker, com pose'."
+    },
+    {
+      "from": "doque compos",
+      "to": "Docker Compose",
+      "safety": "safe",
+      "note": "Live 2026-08-02: 'Docker Compose' -> 'doque compos'. Safe ONLY as the two-word sequence. Each word alone is Portuguese: 'doque' is a dock and 'compos' folds onto 'compôs' ('ele compôs a música'), so neither may ship as its own safe entry."
+    },
+    {
+      "from": "composa",
+      "to": "Compose",
+      "safety": "contextual",
+      "contextBefore": [
+        "docker",
+        "doque"
+      ],
+      "note": "Live 2026-08-02: 'Compose' -> 'Composa'. Contextual, not safe: 'composa' is one deleted letter away from 'composta', which is common in exactly this register ('a resposta é composta por três campos'). 'doque' counts as context because 'doque composa' is not a Portuguese phrase."
+    },
+    {
+      "from": "compost",
+      "to": "Compose",
+      "safety": "contextual",
+      "contextBefore": [
+        "docker",
+        "doque"
+      ],
+      "note": "Live 2026-08-02: 'Compose' -> 'compost'. Contextual for the same reason: one deleted letter away from 'composto' ('o serviço é composto por')."
     },
     {
       "from": "posterg",
@@ -40,10 +69,63 @@
       "safety": "safe"
     },
     {
+      "from": "postergis",
+      "to": "Postgres",
+      "safety": "safe",
+      "note": "Live 2026-08-02: 'Postgres' -> 'postergis'. Not a Portuguese word. KNOWN AMBIGUITY: PostGIS is a real PostgreSQL extension in this user's register, and 'post-er-gis' renders it at least as well as it renders Postgres; there is no competing 'postgis' entry, and context cannot separate them because both take the same database neighbours. Kept because Postgres is far the more frequent of the two here and the error stays jargon-to-jargon (visible, English on both sides) rather than corrupting Portuguese. Revisit if the user actually works with PostGIS."
+    },
+    {
+      "from": "postergress",
+      "to": "Postgres",
+      "safety": "safe",
+      "note": "Live 2026-08-02: 'Postgres' -> 'postergress'. Needs its own entry BECAUSE matching is whole-word: the existing 'posterg' entry does not cover it. Portuguese has no word ending in '-ess'."
+    },
+    {
+      "from": "posthuglis",
+      "to": "Postgres",
+      "safety": "safe",
+      "note": "Live 2026-08-02: 'Postgres' -> 'Posthuglis'. Not a word in any language the user dictates; folding covers the capitalised rendering."
+    },
+    {
+      "from": "post",
+      "to": "Postgres",
+      "safety": "risky",
+      "note": "Live 2026-08-02: 'Postgres' -> 'post'. DISABLED ON PURPOSE. 'post' is everyday Brazilian Portuguese ('um post no blog', 'o post do cliente') and there is no local context that separates the readings — 'um post sobre banco de dados' is exactly the sentence a context gate on 'banco'/'dados' would destroy. Recorded so the measurement survives; the fix belongs to biasTerms, not to substitution."
+    },
+    {
+      "from": "proced",
+      "to": "Postgres",
+      "safety": "risky",
+      "note": "Live 2026-08-02: 'Postgres' -> 'proced'. DISABLED ON PURPOSE. Unlike the entries above, 'proced' is not phonetically close to 'Postgres'; it is far more plausibly a clipped 'procede'/'procedimento', so firing on it would rewrite a Portuguese word the user did say. n=1, and the surrounding words were not recorded."
+    },
+    {
       "from": "brand",
       "to": "branch",
-      "safety": "safe",
-      "note": "Spike 0 RUN 1: 'branch' -> 'brand'. Not a Portuguese word. Cost of a wrong fire is low: both readings are English and the user sees it."
+      "safety": "contextual",
+      "note": "Spike 0 RUN 1: 'branch' -> 'brand'. MEASURED to corrupt correct Portuguese as a bare substitution: 'A brand da empresa mudou.' became 'A branch da empresa mudou.' — 'brand' is everyday Brazilian business vocabulary. Gated on git-shaped neighbours instead, so 'crie uma brand nova' still fires.",
+      "contextBefore": [
+        "cria",
+        "criar",
+        "crie",
+        "abre",
+        "abrir",
+        "merge",
+        "commit",
+        "checkout",
+        "push",
+        "pull",
+        "repositório",
+        "repo",
+        "git"
+      ],
+      "contextAfter": [
+        "nova",
+        "novo",
+        "main",
+        "master",
+        "remota",
+        "remoto"
+      ]
     },
     {
       "from": "brancha",
@@ -53,8 +135,38 @@
     {
       "from": "station",
       "to": "staging",
+      "safety": "contextual",
+      "note": "Spike 0 RUN 1: 'staging' -> 'station'. MEASURED to corrupt correct Portuguese as a bare substitution: 'A station de trabalho travou.' became 'A staging de trabalho travou.', and 'Play Station' became 'Play staging'. Gated on deploy-shaped neighbours, so 'no cluster de station' still fires.",
+      "contextBefore": [
+        "ambiente",
+        "cluster",
+        "deploy",
+        "servidor",
+        "container",
+        "produção",
+        "homologação",
+        "namespace",
+        "pod"
+      ],
+      "contextAfter": []
+    },
+    {
+      "from": "steiging",
+      "to": "staging",
       "safety": "safe",
-      "note": "Spike 0 RUN 1: 'staging' -> 'station'. Not a Portuguese word (that would be 'estação')."
+      "note": "Live 2026-08-02: 'staging' -> 'Steiging'. Not a Portuguese word; no Portuguese word starts with 'st'."
+    },
+    {
+      "from": "steving",
+      "to": "staging",
+      "safety": "safe",
+      "note": "Live 2026-08-02: 'staging' -> 'steving'. Same reasoning as 'steiging'."
+    },
+    {
+      "from": "steak",
+      "to": "staging",
+      "safety": "risky",
+      "note": "Live 2026-08-02: 'staging' -> 'steak'. DISABLED ON PURPOSE. 'steak' is an ordinary loanword a Brazilian dictates about food, and this app is explicitly built for PT-EN code-switching, so it will meet English nouns in correct text. A contextual entry would be defensible, but the observation recorded only the token — there is no evidence for which neighbours identify the jargon reading, and inventing them is how a dictionary starts corrupting text."
     },
     {
       "from": "comite",
@@ -73,14 +185,24 @@
         "fiz",
         "branch"
       ],
-      "contextAfter": ["anterior"],
+      "contextAfter": [
+        "anterior"
+      ],
       "note": "Spike 0 RUN 1: 'commit' -> 'comite'. Folding makes this also match 'comitê', which is a real Portuguese word (committee) — hence contextual, never safe."
     },
     {
       "from": "comites",
       "to": "commits",
       "safety": "contextual",
-      "contextBefore": ["último", "ultimo", "git", "rollback", "revert", "push", "branch"],
+      "contextBefore": [
+        "último",
+        "ultimo",
+        "git",
+        "rollback",
+        "revert",
+        "push",
+        "branch"
+      ],
       "note": "Plural of the entry above; 'comitês' folds onto it."
     },
     {

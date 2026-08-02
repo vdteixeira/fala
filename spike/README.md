@@ -71,6 +71,6 @@ então usá-lo como referência dá 0% de WER e o gate do NFR-2 perde o sentido.
 swift run FalaSpike spike/audio
 ```
 
-Na primeira execução ele baixa o modelo (~1,1 GB). A saída mostra WER por
+Na primeira execução ele baixa o modelo (~480 MB). A saída mostra WER por
 frase, WER agregado, latência de processamento, jargão perdido e o veredicto
 segundo o gate do NFR-2. Registre o número em SPEC.md §6 e feche o GATE S0.
