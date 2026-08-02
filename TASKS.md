@@ -10,12 +10,26 @@ force PT at the decoder). Throwaway code — lives in `Sources/FalaSpike`, delet
 the decision.
 - [x] S0.1 WER harness: `swift run FalaSpike spike/audio` transcribes each `NNN.wav`
       against `NNN.txt` reference, prints per-file and aggregate WER + latency.
-      DoD: harness builds and runs; WER math unit-verifiable by inspection.
+      Scores the WER arm on jargon-bearing fixtures, flags self-graded references,
+      warns below 300 reference words.
 - [ ] S0.2 User records 15–20 PT-BR + IT-jargon fixture phrases (see
       `spike/README.md`). DoD: `spike/audio/` populated (git-ignored).
+      **Run 1 recorded only 6 — still open.** For Run 2: write the reference `.txt`
+      BY HAND FIRST, then read it aloud. Do NOT use `--suggest` for the scoring set;
+      it produced two self-graded references in Run 1.
+- [ ] S0.2b Record 3 takes each of the two failing sentences (deploy/merge and
+      Postgres/Docker Compose/staging), in one sitting with one microphone, so a
+      systematic defect can be told apart from a bad take.
+- [ ] S0.2c Decide and document the ITN convention for references: does the target
+      text read "300" (post-ITN, matching FR-8) or "trezentos" (as spoken)? Run 1's
+      `Audio_5` reference says "300"; the script said "trezentos". This choice alone
+      moves the measured WER across the gate threshold.
 - [ ] S0.3 Run harness, record decision in SPEC.md §6 (Spike 0 row).
       DoD: aggregate WER number + engine decision written down.
+      **Run 1 recorded — gate NOT closed; see SPEC.md §6.**
 **GATE S0:** engine decision (Parakeet stays / WhisperKit evaluation) approved by human.
+Run 1 did not close it. Also pending the human's ruling on whether the NFR-2 WER
+threshold applies to the aggregate or to the jargon-bearing subset.
 
 ## Phase 0 — Project skeleton
 - [x] T0.1 Create SPM package with `FalaKit` (library) + `Fala` (executable) targets.
@@ -30,27 +44,32 @@ the decision.
 
 ## Phase 1 — MVP batch (hotkey + capture + Parakeet + injection + dictionary)
 Depends on Phase 0 + GATE S0 (engine decision).
-- [ ] T1.1 `protocol TranscriptionEngine` + `MockTranscriptionEngine`.
-      DoD: protocol compiles; mock returns canned text; unit test uses it.
-- [ ] T1.2 `AudioCapture` (AVAudioEngine, VP OFF) + `RingBuffer` (~60 s).
-      DoD: RingBuffer unit-tested (wrap/overflow); capture uses native format.
-- [ ] T1.3 `Resampler` (AVAudioConverter → 16 kHz mono F32).
-      DoD: fixture test converts a known buffer to the exact target format.
-- [ ] T1.4 `ParakeetEngine`: `AsrModels.downloadAndLoad(version: .v3)`,
-      `AsrManager.transcribe(_:source:)`. Apply the available language/script filter.
-      DoD: with a bundled PT-BR WAV fixture, returns non-empty text (integration test,
-      may be gated behind a flag if it needs the model download).
+- [x] T1.1 `protocol TranscriptionEngine` + `MockTranscriptionEngine`.
+      Uses an opaque `biasTerms: [String]` so no engine's vocabulary API leaks.
+- [x] T1.2 `AudioCapture` (AVAudioEngine, VP OFF) + `RingBuffer` (~60 s).
+      RingBuffer 21 tests; `CapturedChunk` (the Sendable copy carrying tap audio
+      across isolation) 5 tests. `stop()` always routes through
+      `Resampler.finish()`, so the last ~60 ms is never dropped. `AudioCapture`
+      itself needs a real microphone — verified via `swift run Fala listen`.
+- [x] T1.3 `Resampler` (AVAudioConverter → 16 kHz mono F32). 16 tests.
+- [~] T1.4 `ParakeetEngine`: implemented (actor, idempotent prepare, typed errors,
+      `melChunkContext: false`). **DoD UNMET: no integration test.** Needs a
+      flag-gated test with a PT-BR WAV fixture; nothing constructs it today.
 - [ ] T1.5 `TextNormalizerAdapter` (FluidAudio ITN).
       DoD: wrapper unit-tested with a spoken→written fixture.
-- [ ] T1.6 `JargonDictionary` (deterministic PT-EN IT substitutions from JSON).
-      DoD: unit tests for exact, case, and word-boundary handling; loads default JSON.
-- [ ] T1.7 `HotkeyManager` (CGEventTap, right-Option default, configurable).
-      DoD: logic separated from CGEventTap so key-mapping is unit-testable; manual
-      verification from a signed .app documented in `docs/architecture.md`.
-- [ ] T1.8 `ClipboardInjector` (NSPasteboard snapshot/restore + Cmd+V).
-      DoD: pasteboard snapshot/restore unit-tested; injection verified manually.
-- [ ] T1.9 CLI `doctor` + `setup`.
-      DoD: `swift run Fala doctor` reports mic/AX/model/hotkey status.
+- [x] T1.6 `JargonDictionary` (deterministic PT-EN IT substitutions from JSON).
+      34 tests. Safety tiers (safe/contextual/risky) keep `depois`→`deploy` and
+      `me`→`merge` OFF by default: those two corrupt correct Portuguese, so the two
+      hardest Spike 0 errors are deliberately NOT auto-fixed.
+- [~] T1.7 `HotkeyRecognizer` (right-Option default, configurable) DONE with 9 tests,
+      including the left-vs-right Option case a flag-only check would get wrong.
+      **`HotkeyManager` (the CGEventTap wrapper) NOT STARTED**; needs manual
+      verification from a signed .app.
+- [~] T1.8 `ClipboardInjector` (NSPasteboard snapshot/restore + Cmd+V).
+      Implemented with 21 tests. Six defects found in review and fixed — see
+      `docs/architecture.md`. **Remaining gaps documented there** (SystemPasteboard
+      untested, pasteboard type order lost, lazy items can empty the clipboard).
+- [~] T1.9 CLI `doctor` reports permissions/hotkey/model in PT-BR. `setup` not done.
 - [ ] T1.10 End-to-end manual test: hold key → speak PT-BR → text at cursor.
       DoD: recorded steps; NO audio/transcript in any log (grep proof).
 **GATE 1:** MVP dictates end-to-end; WER spot-checked on user audio (see NFR-2). If WER

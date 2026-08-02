@@ -111,6 +111,42 @@ global hotkey, speak, release; the transcript is inserted at the cursor in any a
   Decision recorded: WER ≤ 12% and stable code-switching → Parakeet stays primary;
   WER > 12–15% or jargon materially broken → WhisperKit large-v3-turbo evaluated as
   PRIMARY before Phase 1 proceeds.
+
+  **RUN 1 — 2026-08-02: GATE NOT CLOSED (measurement not trustworthy).**
+  6 fixtures / 70 reference words, FluidAudio 0.15.5 + Parakeet TDT 0.6B v3
+  (CoreML/ANE, batch, `language: .portuguese`).
+  - Aggregate WER **11.4%** (8 errors / 70 words). Jargon-bearing fixtures only:
+    **13.8%** (8/58). WER arithmetic cross-verified against an independent
+    implementation; both agree per fixture.
+  - **Latency 94–149 ms** per utterance over 44.3 s of audio → **NFR-3 PASSES**
+    with roughly an order of magnitude of margin. NFR-7 (memory) not yet measured.
+  - **Code-switching criterion FAILED:** 7 distinct English terms lost —
+    deploy, merge, branch, commit, postgres, compose, staging.
+  - **Errors are perfectly stratified:** every error landed on an English jargon
+    token; zero errors on Portuguese tokens. The observed failure is English
+    lexical borrowing, NOT the European-vs-Brazilian Portuguese risk this spike
+    was designed to test. That risk remains UNMEASURED.
+  - **Defects that invalidate Run 1:** (a) `Audio_5.txt` and `Audio_6.txt` were
+    never edited after `FalaSpike --suggest` generated them (modification time ==
+    creation time, verified), so 22 of 70 reference words are the model's own
+    output graded against itself — and they are exactly the words creating the
+    margin below 12%. (b) S0.2 asks for 15–20 fixtures; 6 were recorded.
+    (c) `Audio_1` — which carries the two hardest errors (deploy→"depois",
+    merge→"me") — was recorded 91 minutes earlier at ~238 kbps versus ~63 kbps
+    for the rest, so it is not comparable and has no replication.
+  - **DECISION: GATE S0 STAYS OPEN.** Run 1 justifies neither switching engines
+    nor committing Phase 1 to Parakeet. Re-measure (Run 2) with hand-written
+    references, 15+ sentences recorded in one sitting, and repeated takes of the
+    failing sentences.
+  - **Open question for the human at the gate:** NFR-2's WER threshold was
+    written against the aggregate, but the aggregate is diluted by jargon-free
+    fixtures (11.4% vs 13.8% here — opposite sides of the line). `FalaSpike` now
+    scores the WER arm on the jargon-bearing subset. Confirm or overrule.
+  - **FR-20 [AT RISK]:** verified that `VocabularyRescorer` / custom vocabulary is
+    not referenced anywhere in `AsrManager` in the pinned 0.15.5, so it is NOT
+    reachable from the batch `transcribe(_:decoderState:language:)` path this app
+    uses. It is not a free mitigation; treat FR-9 as the mitigation budget until
+    someone demonstrates a working integration.
 - **Phase 1 (MVP batch):** hotkey down/up detected; audio captured at native rate and
   resampled to 16 kHz mono F32 (verified by a fixture test on the resampler); Parakeet
   returns non-empty text for a known PT-BR WAV fixture; jargon dictionary applied

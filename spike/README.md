@@ -38,10 +38,32 @@ Ou grave direto em WAV com o sox (`brew install sox`):
 rec spike/audio/001.wav trim 0 15
 ```
 
+> **Lição da Run 1 (02/08/2026):** escreva as frases de referência **antes** de
+> gravar e leia-as em voz alta. Duas referências da Run 1 nasceram do `--suggest`
+> e foram renomeadas sem correção — deram 0% de WER por construção e sozinhas
+> seguraram o resultado abaixo do limite do gate. Grave tudo numa sessão só, com
+> o mesmo microfone, e repita 3 vezes as frases que falharam.
+
 ## 2. Escreva a referência
 
 Para cada `NNN.wav`, crie `NNN.txt` com a transcrição exata do que você disse
 (uma linha, com o jargão grafado do jeito certo: "deploy", "Kubernetes"...).
+
+Atalho — gere rascunhos com o próprio modelo e **corrija**:
+
+```bash
+swift run FalaSpike spike/audio --suggest
+```
+
+Isso escreve `NNN.txt.suggested` com a hipótese crua do ASR. Abra cada um,
+corrija contra o que você realmente falou e renomeie para `.txt`:
+
+```bash
+cd spike/audio && for f in *.txt.suggested; do mv "$f" "${f%.suggested}"; done
+```
+
+⚠️ Renomear sem corrigir invalida a medição: o rascunho é a saída do modelo,
+então usá-lo como referência dá 0% de WER e o gate do NFR-2 perde o sentido.
 
 ## 3. Rode o harness
 

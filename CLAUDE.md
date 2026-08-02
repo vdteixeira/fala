@@ -44,8 +44,8 @@ NEVER leave the machine and are NEVER logged.
 ```bash
 swift build                                   # debug build
 swift build -c release                        # release binary
-swift test                                    # runs FalaKitTests (no GUI needed)
-swift test --filter JargonDictionaryTests     # single suite (prefer this in a loop)
+./scripts/test.sh                             # runs FalaKitTests (NOT bare `swift test`)
+./scripts/test.sh --filter JargonDictionaryTests  # single suite (prefer this in a loop)
 ./scripts/dev-run.sh                          # build + run the menu-bar app locally
 swift run Fala doctor                         # check permissions + hotkey + model
 swift run Fala --help                         # CLI reference
@@ -53,10 +53,12 @@ swift run FalaSpike spike/audio               # Spike 0: WER on fixture recordin
 swift format lint --recursive Sources/ Tests/ # style check (Swift 6 toolchain)
 ```
 - Minimum deployment target: **macOS 14.0** (FluidAudio requirement). Swift **6.0+**.
-- **Toolchain:** `swift test` (swift-testing) and `swift format` REQUIRE the full
-  Xcode toolchain — the CommandLineTools default lacks the `Testing` module. Either
-  `export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` per shell, or
-  switch globally with `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`.
+- **Toolchain rule (do not violate):** build/run/format with the DEFAULT toolchain
+  (CommandLineTools, Swift 6.2.x here). NEVER set `DEVELOPER_DIR` for `swift build`
+  or `swift run` — mixing toolchains poisons `.build` and every later build fails
+  with "module compiled with Swift X cannot be imported by the Swift Y compiler",
+  forcing a full rebuild. Tests are the one exception: they need Xcode's `Testing`
+  module, so `scripts/test.sh` uses Xcode with an ISOLATED `--scratch-path`.
 - Prefer running a SINGLE test suite over the whole set while iterating.
 
 ## Definition of Done (every task)

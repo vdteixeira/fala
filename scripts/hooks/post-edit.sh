@@ -5,10 +5,11 @@
 set -uo pipefail
 cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/../..}"
 
-# swift-testing and `swift format` need the full Xcode toolchain, not CLT.
-if [ -d /Applications/Xcode.app/Contents/Developer ]; then
-  export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-fi
+# Deliberately does NOT set DEVELOPER_DIR: the hook must compile with the same
+# toolchain as the user's shell, or the two clobber each other's .build modules
+# ("module compiled with Swift X cannot be imported by the Swift Y compiler").
+# Tests, which need Xcode's Testing module, use an isolated scratch path —
+# see scripts/test.sh.
 
 input="$(cat)"
 file_path="$(printf '%s' "$input" | /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin).get("tool_input",{}).get("file_path",""))' 2>/dev/null)"

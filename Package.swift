@@ -19,7 +19,11 @@ let package = Package(
             name: "FalaKit",
             dependencies: [
                 .product(name: "FluidAudio", package: "FluidAudio")
-            ]
+            ],
+            // SwiftPM requires bundled resources to live inside the target
+            // directory, so the default jargon dictionary lives here rather than
+            // at the repo root. Users override it with their own copy at runtime.
+            resources: [.process("Resources")]
         ),
         .executableTarget(
             name: "Fala",

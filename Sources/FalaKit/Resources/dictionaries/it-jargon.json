@@ -1,30 +1,200 @@
 {
-  "$comment": "Default deterministic PT-EN IT jargon substitutions (FR-9). Keys are common ASR misrenderings (lowercase); values are the canonical spelling. User-editable; wired into FalaKit in Phase 1 (T1.6).",
-  "substitutions": {
-    "deploi": "deploy",
-    "deplói": "deploy",
-    "endipoint": "endpoint",
-    "end point": "endpoint",
-    "cubernetes": "Kubernetes",
-    "cubernétis": "Kubernetes",
-    "kubernetes": "Kubernetes",
-    "comite": "commit",
-    "comit": "commit",
-    "pul request": "pull request",
-    "pool request": "pull request",
-    "brancha": "branch",
-    "mergear": "mergear",
-    "merge": "merge",
-    "paipe line": "pipeline",
-    "becape": "backup",
-    "back end": "backend",
-    "front end": "frontend",
-    "docker": "Docker",
-    "dóquer": "Docker",
-    "postgres": "Postgres",
-    "redis": "Redis",
-    "rabitemquiu": "RabbitMQ",
-    "grafana": "Grafana",
-    "devops": "DevOps"
-  }
+  "$comment": "Default deterministic PT-EN IT jargon substitutions (SPEC.md FR-9, US-2). 'from' is a measured or expected ASR misrendering, 'to' is the canonical spelling. Matching is word-boundary anchored and case/diacritic-insensitive, so 'comite' also covers 'comitê' and no entry can match inside a longer word. User-editable: copy this file and load it with JargonDictionary.load(contentsOf:).",
+  "$safety": "'safety' decides whether an entry is ACTIVE. safe = 'from' is not Brazilian Portuguese, so it cannot overwrite correct text. contextual = 'from' is plausible Portuguese, so it only fires when one of its contextBefore/contextAfter words is within 3 word tokens on that side. risky = 'from' is common Portuguese with no disambiguating context; excluded unless the caller passes includeRisky: true. Never promote an entry to 'safe' without checking that 'from' is not a real Portuguese word.",
+  "$provenance": "Terms marked 'Spike 0 RUN 1' were produced by FluidAudio 0.15.5 + Parakeet TDT 0.6B v3 on the user's own recordings, 2026-08-02. See SPEC.md section 6.",
+  "entries": [
+    {
+      "from": "docker com pose",
+      "to": "Docker Compose",
+      "safety": "safe",
+      "note": "Spike 0 RUN 1: 'Docker Compose' -> 'docker com pose'. The three-word form is unambiguous, and longest-match makes it win over 'com pose'."
+    },
+    {
+      "from": "docker compose",
+      "to": "Docker Compose",
+      "safety": "safe",
+      "note": "Casing only."
+    },
+    {
+      "from": "com pose",
+      "to": "Compose",
+      "safety": "contextual",
+      "contextBefore": ["docker"],
+      "note": "Spike 0 RUN 1. 'com pose' is legitimate Portuguese ('veio com pose de chefe'), so it needs Docker nearby. Catches renderings the three-word entry misses, e.g. 'o docker, com pose'."
+    },
+    {
+      "from": "posterg",
+      "to": "Postgres",
+      "safety": "safe",
+      "note": "Spike 0 RUN 1: 'Postgres' -> 'posterg'. A fragment, never a standalone Portuguese word; 'postergar' is a different token and cannot match."
+    },
+    {
+      "from": "postgres",
+      "to": "Postgres",
+      "safety": "safe",
+      "note": "Casing only."
+    },
+    {
+      "from": "postgresql",
+      "to": "PostgreSQL",
+      "safety": "safe"
+    },
+    {
+      "from": "brand",
+      "to": "branch",
+      "safety": "safe",
+      "note": "Spike 0 RUN 1: 'branch' -> 'brand'. Not a Portuguese word. Cost of a wrong fire is low: both readings are English and the user sees it."
+    },
+    {
+      "from": "brancha",
+      "to": "branch",
+      "safety": "safe"
+    },
+    {
+      "from": "station",
+      "to": "staging",
+      "safety": "safe",
+      "note": "Spike 0 RUN 1: 'staging' -> 'station'. Not a Portuguese word (that would be 'estação')."
+    },
+    {
+      "from": "comite",
+      "to": "commit",
+      "safety": "contextual",
+      "contextBefore": [
+        "último",
+        "ultimo",
+        "primeiro",
+        "git",
+        "rollback",
+        "revert",
+        "push",
+        "fazer",
+        "faz",
+        "fiz",
+        "branch"
+      ],
+      "contextAfter": ["anterior"],
+      "note": "Spike 0 RUN 1: 'commit' -> 'comite'. Folding makes this also match 'comitê', which is a real Portuguese word (committee) — hence contextual, never safe."
+    },
+    {
+      "from": "comites",
+      "to": "commits",
+      "safety": "contextual",
+      "contextBefore": ["último", "ultimo", "git", "rollback", "revert", "push", "branch"],
+      "note": "Plural of the entry above; 'comitês' folds onto it."
+    },
+    {
+      "from": "depois",
+      "to": "deploy",
+      "safety": "risky",
+      "note": "Spike 0 RUN 1, Audio_1: 'deploy' -> 'depois'. DISABLED ON PURPOSE. 'depois' is among the most common words in Portuguese, and the same fixture sentence ('Fazer deploy ... depois do merge') contains a correct 'depois', so any unconditional rule fixes one word and breaks the other. No local context separates the readings. The real fix is engine-side: vocabulary biasing via JargonDictionary.biasTerms, or the WhisperKit fallback of NFR-2."
+    },
+    {
+      "from": "me",
+      "to": "merge",
+      "safety": "risky",
+      "note": "Spike 0 RUN 1, Audio_1: 'merge' -> 'me'. DISABLED ON PURPOSE. 'me' is a Portuguese clitic pronoun ('ele me disse'). Same reasoning as 'depois'."
+    },
+    {
+      "from": "deploi",
+      "to": "deploy",
+      "safety": "safe",
+      "note": "Also covers 'deplói' via diacritic folding."
+    },
+    {
+      "from": "deploiar",
+      "to": "deployar",
+      "safety": "safe"
+    },
+    {
+      "from": "endipoint",
+      "to": "endpoint",
+      "safety": "safe"
+    },
+    {
+      "from": "end point",
+      "to": "endpoint",
+      "safety": "safe"
+    },
+    {
+      "from": "cubernetes",
+      "to": "Kubernetes",
+      "safety": "safe"
+    },
+    {
+      "from": "cubernétis",
+      "to": "Kubernetes",
+      "safety": "safe"
+    },
+    {
+      "from": "kubernetes",
+      "to": "Kubernetes",
+      "safety": "safe",
+      "note": "Casing only."
+    },
+    {
+      "from": "pul request",
+      "to": "pull request",
+      "safety": "safe"
+    },
+    {
+      "from": "pool request",
+      "to": "pull request",
+      "safety": "safe"
+    },
+    {
+      "from": "paipe line",
+      "to": "pipeline",
+      "safety": "safe"
+    },
+    {
+      "from": "becape",
+      "to": "backup",
+      "safety": "safe"
+    },
+    {
+      "from": "back end",
+      "to": "backend",
+      "safety": "safe"
+    },
+    {
+      "from": "front end",
+      "to": "frontend",
+      "safety": "safe"
+    },
+    {
+      "from": "docker",
+      "to": "Docker",
+      "safety": "safe",
+      "note": "Casing only."
+    },
+    {
+      "from": "dóquer",
+      "to": "Docker",
+      "safety": "safe"
+    },
+    {
+      "from": "redis",
+      "to": "Redis",
+      "safety": "safe",
+      "note": "Casing only."
+    },
+    {
+      "from": "rabitemquiu",
+      "to": "RabbitMQ",
+      "safety": "safe"
+    },
+    {
+      "from": "grafana",
+      "to": "Grafana",
+      "safety": "safe",
+      "note": "Casing only."
+    },
+    {
+      "from": "devops",
+      "to": "DevOps",
+      "safety": "safe",
+      "note": "Casing only."
+    }
+  ]
 }
