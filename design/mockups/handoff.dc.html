@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/design-system-d3c8f6b0-6ee2-41dd-97ef-fcd1df065fd8/_ds_bundle.css">
+  <link rel="stylesheet" href="_ds/design-system-d3c8f6b0-6ee2-41dd-97ef-fcd1df065fd8/styles.css">
+  <script src="_ds/design-system-d3c8f6b0-6ee2-41dd-97ef-fcd1df065fd8/_ds_bundle.js"></script>
+  <link rel="stylesheet" href="fala-tokens.css">
+  <style>
+    body { margin: 0; }
+    a { color: #5341cd; text-decoration: none; }
+    a:hover { color: #4233a6; text-decoration: underline; }
+  </style>
+</helmet>
+<div data-theme="light" style="min-height: 100vh; background: var(--color-bg-canvas); font-family: var(--font-family-ui); color: var(--color-text-primary); padding: var(--space-5);">
+  <div style="max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--space-3);">
+    <header style="display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap;">
+      <h1 style="margin: 0; font-family: var(--font-family-display); font-size: var(--text-display-size); line-height: var(--text-display-line); font-weight: var(--text-display-weight); letter-spacing: -0.5px;">Handoff de engenharia</h1>
+      <div style="font-size: var(--text-body-size); color: var(--color-text-secondary);">conteúdo integral de <span style="font-family: var(--font-family-mono);">tokens.json</span> (DTCG) e <span style="font-family: var(--font-family-mono);">DESIGN-HANDOFF.md</span> — selecione e copie</div>
+    </header>
+    <sc-for list="{{ docs }}" as="doc" hint-placeholder-count="2">
+      <section style="display: flex; flex-direction: column; gap: var(--space-1);">
+        <div style="display: flex; align-items: center; gap: var(--space-1);">
+          <span class="material-symbols-outlined" style="font-size: 18px; color: var(--color-accent);">{{ doc.icon }}</span>
+          <h2 style="margin: 0; font-family: var(--font-family-display); font-size: var(--text-title-size); font-weight: var(--text-title-weight);">{{ doc.name }}</h2>
+          <span style="font-size: var(--text-caption-size); color: var(--color-text-tertiary);">{{ doc.meta }}</span>
+          <button onClick="{{ doc.onCopy }}" style="margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-family-ui); font-size: var(--text-caption-size); font-weight: 600; color: var(--color-text-on-accent); background: var(--color-accent); border: none; border-radius: var(--radius-sm); padding: 5px 12px; cursor: pointer; transition: background var(--motion-fast) var(--ease-standard);" style-hover="background: var(--color-accent-hover);">
+            <!-- SF Symbol: doc.on.doc --><span class="material-symbols-outlined" style="font-size: 14px;">content_copy</span>{{ doc.copyLabel }}
+          </button>
+        </div>
+        <pre style="margin: 0; background: var(--color-bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: var(--space-2); font-family: var(--font-family-mono); font-size: var(--text-caption-size); line-height: 16px; color: var(--color-text-primary); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 560px; overflow: auto;">{{ doc.content }}</pre>
+      </section>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { tokens: 'Carregando tokens.json…', md: 'Carregando DESIGN-HANDOFF.md…', copied: {} };
+  componentDidMount() {
+    fetch('tokens.json').then(r => r.text()).then(tokens => this.setState({ tokens }));
+    fetch('DESIGN-HANDOFF.md').then(r => r.text()).then(md => this.setState({ md }));
+  }
+  renderVals() {
+    const mk = (key, name, icon, meta, content) => ({
+      name, icon, meta, content,
+      copyLabel: this.state.copied[key] ? 'Copiado' : 'Copiar tudo',
+      onCopy: () => navigator.clipboard.writeText(content).then(() => {
+        this.setState(s => ({ copied: { ...s.copied, [key]: true } }));
+        setTimeout(() => this.setState(s => ({ copied: { ...s.copied, [key]: false } })), 1500);
+      })
+    });
+    return { docs: [
+      mk('tokens', 'tokens.json', 'data_object', 'W3C DTCG · primitivos + semantic.light/semantic.dark · aliases {curly}', this.state.tokens),
+      mk('md', 'DESIGN-HANDOFF.md', 'description', 'intenção por superfície · estados · comportamento · ícones · motion', this.state.md)
+    ] };
+  }
+}
+</script>
+</body>
+</html>

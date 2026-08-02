@@ -1,0 +1,30 @@
+{
+  "$comment": "Default deterministic PT-EN IT jargon substitutions (FR-9). Keys are common ASR misrenderings (lowercase); values are the canonical spelling. User-editable; wired into FalaKit in Phase 1 (T1.6).",
+  "substitutions": {
+    "deploi": "deploy",
+    "deplói": "deploy",
+    "endipoint": "endpoint",
+    "end point": "endpoint",
+    "cubernetes": "Kubernetes",
+    "cubernétis": "Kubernetes",
+    "kubernetes": "Kubernetes",
+    "comite": "commit",
+    "comit": "commit",
+    "pul request": "pull request",
+    "pool request": "pull request",
+    "brancha": "branch",
+    "mergear": "mergear",
+    "merge": "merge",
+    "paipe line": "pipeline",
+    "becape": "backup",
+    "back end": "backend",
+    "front end": "frontend",
+    "docker": "Docker",
+    "dóquer": "Docker",
+    "postgres": "Postgres",
+    "redis": "Redis",
+    "rabitemquiu": "RabbitMQ",
+    "grafana": "Grafana",
+    "devops": "DevOps"
+  }
+}

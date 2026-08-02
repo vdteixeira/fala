@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/design-system-d3c8f6b0-6ee2-41dd-97ef-fcd1df065fd8/_ds_bundle.css">
+  <link rel="stylesheet" href="_ds/design-system-d3c8f6b0-6ee2-41dd-97ef-fcd1df065fd8/styles.css">
+  <script src="_ds/design-system-d3c8f6b0-6ee2-41dd-97ef-fcd1df065fd8/_ds_bundle.js"></script>
+  <link rel="stylesheet" href="fala-tokens.css">
+  <style>
+    body { margin: 0; }
+    a { color: #5341cd; text-decoration: none; }
+    a:hover { color: #4233a6; text-decoration: underline; }
+  </style>
+</helmet>
+<div data-theme="light" style="min-height: 100vh; background: var(--color-bg-canvas); font-family: var(--font-family-ui); color: var(--color-text-primary); padding: var(--space-5);">
+  <div style="max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--space-4);">
+
+    <header style="display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap;">
+      <h1 style="margin: 0; font-family: var(--font-family-display); font-size: var(--text-display-size); line-height: var(--text-display-line); font-weight: var(--text-display-weight); letter-spacing: -0.5px;">Superfície 1 · Pílula flutuante</h1>
+      <div style="font-size: var(--text-body-size); color: var(--color-text-secondary);">HUD sobre outros apps · inferior-central · vibrancy escura nos dois temas do sistema</div>
+      <div style="margin-left: auto; font-family: var(--font-family-mono); font-size: var(--text-caption-size); color: var(--color-text-tertiary);">aparecer 320ms spring · sair 200ms standard · reduced-motion: sem animação, estado legível por cor/ícone</div>
+    </header>
+
+    <!-- Cabeçalho de colunas -->
+    <div style="display: grid; grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-2); align-items: center;">
+      <div></div>
+      <div style="font-size: var(--text-micro-size); font-weight: var(--text-micro-weight); letter-spacing: 1px; text-transform: uppercase; color: var(--color-text-tertiary); text-align: center;">Sistema claro</div>
+      <div style="font-size: var(--text-micro-size); font-weight: var(--text-micro-weight); letter-spacing: 1px; text-transform: uppercase; color: var(--color-text-tertiary); text-align: center;">Sistema escuro</div>
+    </div>
+
+    <sc-for list="{{ rows }}" as="row" hint-placeholder-count="6">
+      <div style="display: grid; grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-2); align-items: stretch;">
+        <!-- Rótulo + spec da variante -->
+        <div style="display: flex; flex-direction: column; gap: var(--space-05); padding: var(--space-2) 0;">
+          <div style="display: inline-flex; align-items: center; gap: var(--space-05);">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: var({{ row.token }});"></span>
+            <span style="font-size: var(--text-headline-size); font-weight: var(--text-headline-weight);">{{ row.title }}</span>
+          </div>
+          <div style="font-family: var(--font-family-mono); font-size: 9.5px; line-height: 14px; color: var(--color-accent);">{{ row.tokenLabel }}</div>
+          <div style="font-size: var(--text-caption-size); line-height: var(--text-caption-line); color: var(--color-text-secondary);">{{ row.spec }}</div>
+        </div>
+        <!-- Célula por tema: backdrop decorativo simulando apps atrás (não funcional) -->
+        <sc-for list="{{ themes }}" as="th" hint-placeholder-count="2">
+          <div data-theme="{{ th.key }}" style="min-width: 0; position: relative; border-radius: var(--radius-lg); border: 1px solid var(--color-border); background: var(--color-bg-canvas); overflow: hidden; min-height: 128px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: var(--space-2);">
+            <!-- decorativo: janelas desfocadas atrás do overlay -->
+            <div style="position: absolute; inset: 0; pointer-events: none;">
+              <div style="position: absolute; left: 8%; top: 14%; width: 46%; height: 120%; border-radius: var(--radius-md); background: var(--color-bg-surface); border: 1px solid var(--color-border); opacity: 0.8;"></div>
+              <div style="position: absolute; right: 6%; top: 26%; width: 40%; height: 120%; border-radius: var(--radius-md); background: var(--color-bg-inset); border: 1px solid var(--color-border); opacity: 0.7;"></div>
+            </div>
+            <!-- oculta: presença mínima (repouso fora de uso) -->
+            <sc-if value="{{ row.isHidden }}" hint-placeholder-val="{{ false }}">
+              <div style="position: relative; display: flex; align-items: center; gap: var(--space-3);">
+                <div style="display: flex; flex-direction: column; align-items: center; gap: var(--space-05);">
+                  <!-- oculta = colapsada num traço discreto; some após 2s de inatividade (saída 200ms ease-standard) -->
+                  <div style="width: 28px; height: 5px; border-radius: var(--radius-pill); background: var(--color-pill-bg); opacity: 0.35; box-shadow: var(--shadow-md);"></div>
+                  <div style="font-size: var(--text-micro-size); color: var(--color-text-tertiary);">oculta</div>
+                </div>
+                <div style="display: flex; flex-direction: column; align-items: center; gap: var(--space-05);">
+                  <!-- repouso: aparece ao segurar ⌥ · fala-appear 320ms ease-spring -->
+                  <div style="display: inline-flex; align-items: center; gap: var(--space-1); background: var(--color-pill-bg); color: var(--color-pill-text); border-radius: var(--radius-pill); padding: var(--space-1) var(--space-2); box-shadow: var(--shadow-pop); backdrop-filter: blur(20px); animation: fala-appear var(--motion-slow) var(--ease-spring);">
+                    <!-- SF Symbol: mic.fill --><span class="material-symbols-outlined" style="font-size: 16px; color: var(--color-state-idle);">mic</span>
+                    <span style="font-size: var(--text-caption-size); font-weight: 600;">{{ hotkeyHint }}</span>
+                  </div>
+                  <div style="font-size: var(--text-micro-size); color: var(--color-text-tertiary);">repouso · aparecendo</div>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ row.isPill }}" hint-placeholder-val="{{ true }}">
+              <div style="position: relative; display: inline-flex; align-items: center; flex-wrap: wrap; justify-content: center; row-gap: var(--space-05); column-gap: var(--space-1); max-width: calc(100% - var(--space-3)); background: var(--color-pill-bg); color: var(--color-pill-text); border-radius: var(--radius-xl); padding: var(--space-1) var(--space-2); box-shadow: var(--shadow-pop); backdrop-filter: blur(20px);">
+                <!-- ícone de estado (funcional: comunica o estado) -->
+                <span class="material-symbols-outlined" style="font-size: 18px; color: var({{ row.token }}); animation: {{ row.iconAnim }}; flex: none;">{{ row.icon }}</span>
+                <!-- waveform (funcional: nível de voz) · fala-wave 900ms ease-standard loop, delays alternados -->
+                <sc-if value="{{ row.showWave }}" hint-placeholder-val="{{ false }}">
+                  <span style="display: inline-flex; align-items: center; gap: 2px; height: 16px;">
+                    <span style="width: 3px; height: 16px; border-radius: 2px; background: var(--color-state-recording); animation: fala-wave 900ms var(--ease-standard) -0.10s infinite;"></span>
+                    <span style="width: 3px; height: 16px; border-radius: 2px; background: var(--color-state-recording); animation: fala-wave 900ms var(--ease-standard) -0.42s infinite;"></span>
+                    <span style="width: 3px; height: 16px; border-radius: 2px; background: var(--color-state-recording); animation: fala-wave 900ms var(--ease-standard) -0.65s infinite;"></span>
+                    <span style="width: 3px; height: 16px; border-radius: 2px; background: var(--color-state-recording); animation: fala-wave 900ms var(--ease-standard) -0.22s infinite;"></span>
+                    <span style="width: 3px; height: 16px; border-radius: 2px; background: var(--color-state-recording); animation: fala-wave 900ms var(--ease-standard) -0.55s infinite;"></span>
+                    <span style="width: 3px; height: 16px; border-radius: 2px; background: var(--color-state-recording); animation: fala-wave 900ms var(--ease-standard) -0.33s infinite;"></span>
+                  </span>
+                </sc-if>
+                <span style="font-size: var(--text-caption-size); font-weight: 600; text-align: center; min-width: 0;">{{ row.label }}</span>
+                <!-- dica de atalho (funcional: ensina o gesto) -->
+                <sc-if value="{{ row.showHotkey }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-family: var(--font-family-mono); font-size: var(--text-micro-size); background: rgba(255,255,255,0.14); border-radius: 4px; padding: 2px 6px; white-space: nowrap;">{{ hotkeyHint }}</span>
+                </sc-if>
+                <!-- selo on-device (funcional: confiança) -->
+                <sc-if value="{{ row.showOnDevice }}" hint-placeholder-val="{{ false }}">
+                  <span style="display: inline-flex; align-items: center; gap: 3px; font-size: var(--text-micro-size); font-weight: var(--text-micro-weight); color: var(--color-accent-warm); white-space: nowrap;"><!-- SF Symbol: cpu --><span class="material-symbols-outlined" style="font-size: 12px;">memory</span>no dispositivo</span>
+                </sc-if>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </sc-for>
+
+    <footer style="display: flex; gap: var(--space-2); font-size: var(--text-caption-size); line-height: var(--text-caption-line); color: var(--color-text-secondary); flex-wrap: wrap;">
+      <div style="background: var(--color-bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2);"><strong style="color: var(--color-text-primary);">Funcional:</strong> ícone de estado, waveform (nível de voz), textos, dica de atalho, selo "no dispositivo".</div>
+      <div style="background: var(--color-bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2);"><strong style="color: var(--color-text-primary);">Decorativo:</strong> janelas desfocadas do fundo, blur/vibrancy da pílula, sombra --shadow-pop.</div>
+      <div style="background: var(--color-bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2);"><strong style="color: var(--color-text-primary);">Reduced motion:</strong> waveform vira barras estáticas a 60%, spinner vira ícone fixo, aparecer/sair sem transição (fala-tokens.css).</div>
+    </footer>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;hotkeyLabel&quot;: { &quot;editor&quot;: &quot;text&quot;, &quot;default&quot;: &quot;Segure ⌥ direito para falar&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Conteúdo&quot; },
+  &quot;showOnDeviceBadge&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Conteúdo&quot; }
+}">
+class Component extends DCLogic {
+  renderVals() {
+    const hotkeyHint = this.props.hotkeyLabel ?? 'Segure ⌥ direito para falar';
+    const onDevice = this.props.showOnDeviceBadge ?? true;
+    const rows = [
+      { key: 'idle', title: '1 · idle / oculta', icon: 'mic', /* SF Symbol: mic.fill */
+        spec: 'Oculta: traço 28×5px, 35% opacidade. Aparece ao segurar ⌥ · fala-appear 320ms --ease-spring. Some 200ms --ease-standard.',
+        isHidden: true, isPill: false },
+      { key: 'recording', title: '2 · recording', icon: 'mic', /* SF Symbol: mic.fill (nível: waveform) */
+        label: 'Ouvindo…', spec: 'Waveform reage à voz · fala-wave 900ms --ease-standard, loop, delays alternados.',
+        showWave: true, showHotkey: true, isPill: true },
+      { key: 'transcribing', title: '3 · transcribing', icon: 'autorenew', /* SF Symbol: arrow.triangle.2.circlepath */
+        label: 'Transcrevendo…', spec: 'Spinner fala-spin 900ms linear, loop. Selo reforça processamento local.',
+        iconAnim: 'fala-spin 900ms linear infinite', showOnDevice: onDevice, isPill: true },
+      { key: 'success', title: '4 · success', icon: 'check_circle', /* SF Symbol: checkmark.circle.fill */
+        label: 'Texto inserido', spec: 'Confirmação breve: permanece 1,2s e sai · fala-dismiss 200ms --ease-standard.',
+        isPill: true },
+      { key: 'error', title: '5 · error', icon: 'lock', /* SF Symbol: lock.fill (causa) + estado error */
+        label: 'Campo protegido — injeção bloqueada', spec: 'Campo seguro detectado; nada é digitado nem retido. Sai após 2,5s.',
+        isPill: true },
+      { key: 'warning', title: '6 · warning', icon: 'headphones', /* SF Symbol: airpods */
+        label: 'Microfone dos AirPods em baixa qualidade (HFP)', spec: 'Persistente enquanto a rota de áudio HFP estiver ativa; não bloqueia o ditado.',
+        isPill: true }
+    ].map(r => ({ iconAnim: 'none', showWave: false, showHotkey: false, showOnDevice: false, isHidden: false, ...r,
+      token: '--color-state-' + r.key, tokenLabel: '--color-state-' + r.key + ' · -soft' }));
+    const themes = [ { key: 'light' }, { key: 'dark' } ];
+    return { rows, themes, hotkeyHint };
+  }
+}
+</script>
+</body>
+</html>

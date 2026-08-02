@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/design-system-d3c8f6b0-6ee2-41dd-97ef-fcd1df065fd8/_ds_bundle.css">
+  <link rel="stylesheet" href="_ds/design-system-d3c8f6b0-6ee2-41dd-97ef-fcd1df065fd8/styles.css">
+  <script src="_ds/design-system-d3c8f6b0-6ee2-41dd-97ef-fcd1df065fd8/_ds_bundle.js"></script>
+  <link rel="stylesheet" href="fala-tokens.css">
+  <style>
+    body { margin: 0; }
+    a { color: #5341cd; text-decoration: none; }
+    a:hover { color: #4233a6; text-decoration: underline; }
+  </style>
+</helmet>
+<div data-theme="light" style="min-height: 100vh; background: var(--color-bg-canvas); font-family: var(--font-family-ui); color: var(--color-text-primary); padding: var(--space-5);">
+  <div style="max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--space-4);">
+
+    <header style="display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap;">
+      <h1 style="margin: 0; font-family: var(--font-family-display); font-size: var(--text-display-size); line-height: var(--text-display-line); font-weight: var(--text-display-weight); letter-spacing: -0.5px;">Superfície 2 · Popover da menu bar</h1>
+      <div style="font-size: var(--text-body-size); color: var(--color-text-secondary);">NSPopover 340px · LSUIElement · vibrancy --color-bg-vibrancy + blur</div>
+      <div style="margin-left: auto; font-family: var(--font-family-mono); font-size: var(--text-caption-size); color: var(--color-text-tertiary);">abrir: fala-appear 320ms --ease-spring · hover de linha 120ms · progresso: width 200ms --ease-standard</div>
+    </header>
+
+    <sc-for list="{{ scenarios }}" as="sc" hint-placeholder-count="2">
+      <section style="display: flex; flex-direction: column; gap: var(--space-2);">
+        <div style="display: inline-flex; align-items: center; gap: var(--space-1);">
+          <span style="width: 8px; height: 8px; border-radius: 50%; background: var({{ sc.dotToken }});"></span>
+          <h2 style="margin: 0; font-family: var(--font-family-display); font-size: var(--text-title-size); font-weight: var(--text-title-weight);">{{ sc.title }}</h2>
+          <span style="font-size: var(--text-caption-size); color: var(--color-text-secondary);">{{ sc.sub }}</span>
+        </div>
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-3);">
+          <sc-for list="{{ sc.panes }}" as="p" hint-placeholder-count="2">
+            <div data-theme="{{ p.theme }}" style="min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-xl); background: var(--color-bg-canvas); padding: var(--space-3); display: flex; flex-direction: column; align-items: center; gap: var(--space-05); color: var(--color-text-primary);">
+              <!-- barra de menu simulada (decorativa) -->
+              <div style="width: 100%; max-width: 360px; display: flex; justify-content: flex-end; align-items: center; gap: var(--space-1); background: var(--color-bg-vibrancy); backdrop-filter: blur(20px); border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 3px 10px;">
+                <!-- ícone template monocromático: 4 barras waveform-aspas -->
+                <span style="display: inline-flex; align-items: center; gap: 2px;">
+                  <span style="width: 2.5px; height: 6px; border-radius: 1px; background: var(--color-text-primary);"></span>
+                  <span style="width: 2.5px; height: 12px; border-radius: 1px; background: var(--color-text-primary);"></span>
+                  <span style="width: 2.5px; height: 9px; border-radius: 1px; background: var(--color-text-primary);"></span>
+                  <span style="width: 2.5px; height: 5px; border-radius: 1px; background: var(--color-text-primary);"></span>
+                </span>
+                <span style="font-size: var(--text-caption-size); color: var(--color-text-secondary);">14:32</span>
+              </div>
+              <!-- seta do popover (decorativa) -->
+              <div style="width: 14px; height: 14px; margin-bottom: -7px; transform: rotate(45deg) translateY(-4px); background: var(--color-bg-vibrancy); border-left: 1px solid var(--color-border); border-top: 1px solid var(--color-border); z-index: 1;"></div>
+              <!-- POPOVER · 340px · fala-appear 320ms --ease-spring ao abrir -->
+              <div style="width: 340px; max-width: 100%; background: var(--color-bg-vibrancy); backdrop-filter: blur(28px); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-pop); overflow: hidden; display: flex; flex-direction: column;">
+                <!-- Cabeçalho: identidade + toggle ativar/desativar ditado (funcional) -->
+                <div style="display: flex; align-items: center; gap: var(--space-1); padding: var(--space-2) var(--space-2) var(--space-1);">
+                  <div style="width: 26px; height: 26px; border-radius: var(--radius-sm); background: linear-gradient(160deg, var(--fala-violet-500), var(--fala-violet-700)); display: flex; align-items: center; justify-content: center; gap: 2px; flex: none;">
+                    <span style="width: 2.5px; height: 6px; border-radius: 1px; background: rgba(255,255,255,0.95);"></span>
+                    <span style="width: 2.5px; height: 12px; border-radius: 1px; background: rgba(255,255,255,0.95);"></span>
+                    <span style="width: 2.5px; height: 8px; border-radius: 1px; background: var(--fala-amber-300);"></span>
+                    <span style="width: 2.5px; height: 5px; border-radius: 1px; background: rgba(255,255,255,0.95);"></span>
+                  </div>
+                  <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+                    <div style="font-family: var(--font-family-display); font-size: var(--text-headline-size); font-weight: 700;">Fala</div>
+                    <div style="font-size: var(--text-micro-size); color: {{ p.dictColor }}; font-weight: var(--text-micro-weight); letter-spacing: 0.4px;">{{ p.dictLabel }}</div>
+                  </div>
+                  <!-- Toggle ditado · knob 120ms --ease-spring -->
+                  <div onClick="{{ p.onToggle }}" style="width: 36px; height: 22px; border-radius: var(--radius-pill); background: {{ p.toggleBg }}; padding: 2px; cursor: pointer; box-sizing: border-box; transition: background var(--motion-fast) var(--ease-standard); flex: none;">
+                    <div style="width: 18px; height: 18px; border-radius: 50%; background: #ffffff; box-shadow: var(--shadow-sm); transform: {{ p.knobX }}; transition: transform var(--motion-fast) var(--ease-spring);"></div>
+                  </div>
+                </div>
+                <!-- Banner de permissões (variante: pendente) -->
+                <sc-if value="{{ p.showPerms }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin: var(--space-05) var(--space-2) var(--space-1); display: flex; align-items: center; gap: var(--space-1); background: var(--color-state-warning-soft); border: 1px solid var(--color-state-warning); border-radius: var(--radius-md); padding: var(--space-1);">
+                    <!-- SF Symbol: exclamationmark.circle --><span class="material-symbols-outlined" style="font-size: 18px; color: var(--color-state-warning); flex: none;">error</span>
+                    <div style="flex: 1; min-width: 0; font-size: var(--text-caption-size); line-height: var(--text-caption-line); color: var(--color-text-primary);">Permissões pendentes: <strong>Acessibilidade e Microfone</strong></div>
+                    <button style="font-family: var(--font-family-ui); font-size: var(--text-caption-size); font-weight: 600; color: var(--color-text-on-accent); background: var(--color-accent); border: none; border-radius: var(--radius-sm); padding: 4px 10px; cursor: pointer; flex: none; transition: background var(--motion-fast) var(--ease-standard);" style-hover="background: var(--color-accent-hover);">Conceder</button>
+                  </div>
+                </sc-if>
+                <!-- Bloco de status do modelo -->
+                <div style="margin: 0 var(--space-2) var(--space-1); background: var(--color-bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-1) var(--space-1);">
+                  <sc-if value="{{ p.modelReady }}" hint-placeholder-val="{{ true }}">
+                    <div style="display: flex; align-items: center; gap: var(--space-1);">
+                      <!-- SF Symbol: cpu --><span class="material-symbols-outlined" style="font-size: 18px; color: var(--color-state-success); flex: none;">memory</span>
+                      <div style="flex: 1; font-size: var(--text-caption-size); font-weight: 600;">Modelo {{ modelName }} · pronto</div>
+                      <span style="font-size: var(--text-micro-size); color: var(--color-text-tertiary);">1,1 GB local</span>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ p.modelDownloading }}" hint-placeholder-val="{{ false }}">
+                    <div style="display: flex; flex-direction: column; gap: var(--space-05);">
+                      <div style="display: flex; align-items: center; gap: var(--space-1);">
+                        <!-- SF Symbol: arrow.down.circle --><span class="material-symbols-outlined" style="font-size: 18px; color: var(--color-state-transcribing); flex: none; animation: fala-pulse 1.6s var(--ease-standard) infinite;">download</span>
+                        <div style="flex: 1; font-size: var(--text-caption-size); font-weight: 600;">Baixando modelo… {{ modelPct }}%</div>
+                        <span style="font-size: var(--text-micro-size); color: var(--color-text-tertiary);">{{ modelMb }}</span>
+                      </div>
+                      <!-- progresso · width 200ms --ease-standard a cada atualização -->
+                      <div style="height: 4px; border-radius: var(--radius-pill); background: var(--color-bg-inset); overflow: hidden;">
+                        <div style="height: 100%; width: {{ modelPctW }}; border-radius: var(--radius-pill); background: var(--color-state-transcribing); transition: width var(--motion-base) var(--ease-standard);"></div>
+                      </div>
+                    </div>
+                  </sc-if>
+                </div>
+                <!-- Transcrições recentes -->
+                <div style="padding: var(--space-05) var(--space-1) var(--space-05);">
+                  <div style="padding: var(--space-05) var(--space-1); font-size: var(--text-micro-size); font-weight: var(--text-micro-weight); letter-spacing: 0.8px; text-transform: uppercase; color: var(--color-text-tertiary);">Recentes</div>
+                  <sc-for list="{{ recents }}" as="r" hint-placeholder-count="3">
+                    <div style="display: flex; align-items: center; gap: var(--space-1); padding: 5px var(--space-1); border-radius: var(--radius-sm); cursor: default; transition: background var(--motion-fast) var(--ease-standard);" style-hover="background: var(--color-bg-surface-hover);">
+                      <div style="flex: 1; min-width: 0;">
+                        <div style="font-size: var(--text-caption-size); line-height: var(--text-caption-line); color: var(--color-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ r.text }}</div>
+                        <div style="font-size: var(--text-micro-size); color: var(--color-text-tertiary);">{{ r.meta }}</div>
+                      </div>
+                      <!-- SF Symbol: doc.on.doc --><span class="material-symbols-outlined" style="font-size: 14px; color: var(--color-text-tertiary); cursor: pointer;" title="Copiar">content_copy</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="height: 1px; background: var(--color-border); margin: var(--space-05) var(--space-2);"></div>
+                <!-- Ações rápidas -->
+                <div style="padding: 0 var(--space-1) var(--space-05); display: flex; flex-direction: column;">
+                  <div style="display: flex; align-items: center; gap: var(--space-1); padding: 6px var(--space-1); border-radius: var(--radius-sm); cursor: pointer; transition: background var(--motion-fast) var(--ease-standard);" style-hover="background: var(--color-bg-surface-hover);">
+                    <!-- SF Symbol: gearshape.fill --><span class="material-symbols-outlined" style="font-size: 16px; color: var(--color-text-secondary);">settings</span>
+                    <span style="font-size: var(--text-body-size);">Abrir Ajustes</span>
+                    <span style="margin-left: auto; font-family: var(--font-family-mono); font-size: var(--text-micro-size); color: var(--color-text-tertiary);">⌘ ,</span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: var(--space-1); padding: 6px var(--space-1); border-radius: var(--radius-sm); cursor: pointer; transition: background var(--motion-fast) var(--ease-standard);" style-hover="background: var(--color-bg-surface-hover);">
+                    <!-- SF Symbol: clock.arrow.circlepath --><span class="material-symbols-outlined" style="font-size: 16px; color: var(--color-text-secondary);">history</span>
+                    <span style="font-size: var(--text-body-size);">Abrir Histórico</span>
+                  </div>
+                </div>
+                <!-- Linha de privacidade — sempre visível (funcional: confiança) -->
+                <div style="display: flex; align-items: center; justify-content: center; gap: var(--space-05); padding: var(--space-1); background: var(--color-accent-soft); color: var(--color-accent); font-size: var(--text-micro-size); font-weight: var(--text-micro-weight); letter-spacing: 0.4px;">
+                  <!-- SF Symbol: lock.shield.fill --><span class="material-symbols-outlined" style="font-size: 12px;">lock</span>
+                  100% no seu Mac · sem telemetria
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+    </sc-for>
+
+    <!-- Bloco do modelo · 3ª variante: erro -->
+    <section style="display: flex; flex-direction: column; gap: var(--space-2);">
+      <div style="display: inline-flex; align-items: center; gap: var(--space-1);">
+        <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-state-error);"></span>
+        <h2 style="margin: 0; font-family: var(--font-family-display); font-size: var(--text-title-size); font-weight: var(--text-title-weight);">Bloco do modelo · variante erro</h2>
+        <span style="font-size: var(--text-caption-size); color: var(--color-text-secondary);">substitui o bloco de status quando o download falha</span>
+      </div>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-3);">
+        <sc-for list="{{ themesOnly }}" as="th" hint-placeholder-count="2">
+          <div data-theme="{{ th.key }}" style="min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-xl); background: var(--color-bg-canvas); padding: var(--space-3); display: flex; justify-content: center; color: var(--color-text-primary);">
+            <div style="width: 340px; max-width: 100%; background: var(--color-bg-surface); border: 1px solid var(--color-state-error); border-radius: var(--radius-md); padding: var(--space-1); display: flex; align-items: center; gap: var(--space-1);">
+              <!-- SF Symbol: exclamationmark.triangle.fill --><span class="material-symbols-outlined" style="font-size: 18px; color: var(--color-state-error); flex: none;">warning</span>
+              <div style="flex: 1; min-width: 0; font-size: var(--text-caption-size); line-height: var(--text-caption-line);">Falha ao baixar o modelo {{ modelName }}</div>
+              <button style="font-family: var(--font-family-ui); font-size: var(--text-caption-size); font-weight: 600; color: var(--color-state-error); background: var(--color-state-error-soft); border: none; border-radius: var(--radius-sm); padding: 4px 10px; cursor: pointer; flex: none; transition: opacity var(--motion-fast) var(--ease-standard);" style-hover="opacity: 0.8;">Tentar novamente</button>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <footer style="display: flex; gap: var(--space-2); font-size: var(--text-caption-size); line-height: var(--text-caption-line); color: var(--color-text-secondary); flex-wrap: wrap;">
+      <div style="background: var(--color-bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2);"><strong style="color: var(--color-text-primary);">Funcional:</strong> toggle de ditado, banner de permissões + Conceder, status/progresso do modelo, lista de recentes, ações, linha de privacidade.</div>
+      <div style="background: var(--color-bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2);"><strong style="color: var(--color-text-primary);">Decorativo:</strong> barra de menu simulada, seta do popover, vibrancy/blur, pulso do ícone de download.</div>
+      <div style="background: var(--color-bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2);"><strong style="color: var(--color-text-primary);">Reduced motion:</strong> sem fala-appear/pulso; progresso atualiza sem transição (fala-tokens.css).</div>
+    </footer>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;modelName&quot;: { &quot;editor&quot;: &quot;text&quot;, &quot;default&quot;: &quot;Parakeet&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Modelo&quot; },
+  &quot;downloadProgress&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 62, &quot;min&quot;: 0, &quot;max&quot;: 100, &quot;step&quot;: 1, &quot;unit&quot;: &quot;%&quot;, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Modelo&quot; }
+}">
+class Component extends DCLogic {
+  state = { toggles: { 'healthy-light': true, 'healthy-dark': true, 'attention-light': true, 'attention-dark': true } };
+  renderVals() {
+    const modelName = this.props.modelName ?? 'Parakeet';
+    const pct = Math.round(this.props.downloadProgress ?? 62);
+    const recents = [
+      { text: '"Vou revisar o pull request depois do almoço e te aviso."', meta: 'há 2 min · VS Code' },
+      { text: '"Bora fechar o escopo da sprint amanhã às 10h?"', meta: 'há 18 min · Slack' },
+      { text: '"git rebase interativo nos últimos três commits"', meta: 'há 41 min · Terminal' },
+      { text: '"Segue o resumo da call com o time de dados."', meta: 'há 1 h · Mail' }
+    ];
+    const mkPane = (variant, theme) => {
+      const key = variant + '-' + theme;
+      const on = this.state.toggles[key];
+      return {
+        theme, key,
+        onToggle: () => this.setState(s => ({ toggles: { ...s.toggles, [key]: !s.toggles[key] } })),
+        toggleBg: on ? 'var(--color-accent)' : 'var(--color-border-strong)',
+        knobX: on ? 'translateX(14px)' : 'translateX(0)',
+        dictLabel: on ? 'Ditado ativado' : 'Ditado desativado',
+        dictColor: on ? 'var(--color-state-success)' : 'var(--color-text-tertiary)',
+        showPerms: variant === 'attention',
+        modelReady: variant === 'healthy',
+        modelDownloading: variant === 'attention'
+      };
+    };
+    const scenarios = [
+      { key: 'healthy', title: 'Estado saudável', sub: 'sem banner · modelo pronto', dotToken: '--color-state-success',
+        panes: [mkPane('healthy', 'light'), mkPane('healthy', 'dark')] },
+      { key: 'attention', title: 'Atenção · permissões pendentes + baixando modelo', sub: 'banner warning + progresso', dotToken: '--color-state-warning',
+        panes: [mkPane('attention', 'light'), mkPane('attention', 'dark')] }
+    ];
+    return {
+      scenarios, recents, modelName,
+      modelPct: pct, modelPctW: pct + '%', modelMb: Math.round(1126 * pct / 100) + ' MB de 1,1 GB',
+      themesOnly: [{ key: 'light' }, { key: 'dark' }]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,189 @@
+/* ============================================================
+   FALA — Design Tokens (single source of truth)
+   On-device dictation for macOS · pt-BR UI
+   Architecture: primitives (--fala-*) → semantic aliases (--color-*, --shadow-*)
+   Components reference ONLY semantic tokens.
+   ============================================================ */
+
+:root {
+  /* ---------- PRIMITIVES · palette ---------- */
+  /* Violeta (marca — herdado do ecossistema Tag) */
+  --fala-violet-50:  #f2f0fd;
+  --fala-violet-100: #e5e0fb;
+  --fala-violet-200: #cdc4f6;
+  --fala-violet-300: #ab9df0;
+  --fala-violet-400: #8a78ec;
+  --fala-violet-500: #6c5ce7;
+  --fala-violet-600: #5341cd;
+  --fala-violet-700: #4233a6;
+  --fala-violet-800: #322579;
+  --fala-violet-900: #221a52;
+  /* Âmbar (acento quente) */
+  --fala-amber-50:  #fff6ea;
+  --fala-amber-100: #ffead0;
+  --fala-amber-200: #ffd9a8;
+  --fala-amber-300: #ffc077;
+  --fala-amber-400: #fca64e;
+  --fala-amber-500: #f28c26;
+  --fala-amber-600: #d0731a;
+  --fala-amber-700: #a55a12;
+  /* Neutros (cinza-ameixa, levemente violeta) */
+  --fala-neutral-0:   #ffffff;
+  --fala-neutral-50:  #f7f6fa;
+  --fala-neutral-100: #efedf4;
+  --fala-neutral-200: #e3e0ea;
+  --fala-neutral-300: #cbc7d6;
+  --fala-neutral-400: #a5a0b1;
+  --fala-neutral-500: #7d7889;
+  --fala-neutral-600: #5e5969;
+  --fala-neutral-700: #46414f;
+  --fala-neutral-800: #302b3a;
+  --fala-neutral-850: #262130;
+  --fala-neutral-900: #1c1826;
+  --fala-neutral-950: #141019;
+  /* Verde (sucesso) */
+  --fala-green-100: #d9f4e5;
+  --fala-green-300: #6fd8a3;
+  --fala-green-400: #43c583;
+  --fala-green-500: #27b06b;
+  --fala-green-600: #1e9159;
+  /* Rosa (gravação — vivo, pulsante) */
+  --fala-rose-100: #ffe0ea;
+  --fala-rose-300: #ff9ab8;
+  --fala-rose-400: #ff6b93;
+  --fala-rose-500: #f43f6e;
+  --fala-rose-600: #d02a58;
+  /* Vermelho (erro — firme) */
+  --fala-red-100: #ffdfdf;
+  --fala-red-300: #ff8f8f;
+  --fala-red-400: #ff6b78;
+  --fala-red-500: #e0404c;
+  --fala-red-600: #c22c3c;
+
+  /* ---------- PRIMITIVES · spacing (8px grid; 4px only for tight icon/text gaps) ---------- */
+  --space-05: 4px;
+  --space-1:  8px;
+  --space-2:  16px;
+  --space-3:  24px;
+  --space-4:  32px;
+  --space-5:  40px;
+  --space-6:  48px;
+
+  /* ---------- PRIMITIVES · radii ---------- */
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   14px;
+  --radius-xl:   20px;
+  --radius-pill: 999px;
+
+  /* ---------- PRIMITIVES · typography ---------- */
+  --font-family-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --font-family-display: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-family-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --text-display-size: 26px; --text-display-line: 32px; --text-display-weight: 700; /* font: display */
+  --text-title-size:   17px; --text-title-line:   22px; --text-title-weight:   700;
+  --text-headline-size:13px; --text-headline-line:18px; --text-headline-weight:600;
+  --text-body-size:    13px; --text-body-line:    18px; --text-body-weight:    400;
+  --text-caption-size: 11px; --text-caption-line: 14px; --text-caption-weight: 500;
+  --text-micro-size:   10px; --text-micro-line:   12px; --text-micro-weight:   600;
+
+  /* ---------- PRIMITIVES · motion ----------
+     fast  120ms — hovers, toggles, icon swaps
+     base  200ms — surface transitions, badges, focus rings
+     slow  320ms — pill enter/exit, theme cross-fade
+     ease-standard — general purpose deceleration
+     ease-spring   — pill/waveform character moments */
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --motion-slow: 320ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+/* ============================================================
+   SEMANTIC ALIASES — same names, per-theme values
+   ============================================================ */
+[data-theme="light"] {
+  --color-bg-canvas: var(--fala-neutral-50);
+  --color-bg-surface: var(--fala-neutral-0);
+  --color-bg-surface-hover: var(--fala-neutral-100);
+  --color-bg-inset: var(--fala-neutral-100);
+  --color-bg-vibrancy: rgba(247, 246, 250, 0.78); /* NSVisualEffectView .menu */
+  --color-text-primary: var(--fala-neutral-900);
+  --color-text-secondary: var(--fala-neutral-600);
+  --color-text-tertiary: var(--fala-neutral-400);
+  --color-text-on-accent: #ffffff;
+  --color-accent: var(--fala-violet-600);
+  --color-accent-hover: var(--fala-violet-700);
+  --color-accent-active: var(--fala-violet-800);
+  --color-accent-soft: var(--fala-violet-100);
+  --color-accent-warm: var(--fala-amber-500);
+  --color-accent-warm-soft: var(--fala-amber-100);
+  --color-border: var(--fala-neutral-200);
+  --color-border-strong: var(--fala-neutral-300);
+  --color-focus-ring: rgba(83, 65, 205, 0.4);
+  /* Estados — vocabulário compartilhado */
+  --color-state-idle: var(--fala-neutral-500);         --color-state-idle-soft: var(--fala-neutral-100);
+  --color-state-recording: var(--fala-rose-500);       --color-state-recording-soft: var(--fala-rose-100);
+  --color-state-transcribing: var(--fala-violet-500);  --color-state-transcribing-soft: var(--fala-violet-100);
+  --color-state-success: var(--fala-green-600);        --color-state-success-soft: var(--fala-green-100);
+  --color-state-error: var(--fala-red-500);            --color-state-error-soft: var(--fala-red-100);
+  --color-state-warning: var(--fala-amber-600);        --color-state-warning-soft: var(--fala-amber-100);
+  /* Pílula HUD (sempre material escuro, como HUDs do macOS) */
+  --color-pill-bg: rgba(28, 24, 38, 0.88);
+  --color-pill-text: #f4f2fa;
+  --shadow-sm: 0 1px 2px rgba(28, 24, 38, 0.06);
+  --shadow-md: 0 2px 8px rgba(28, 24, 38, 0.08);
+  --shadow-lg: 0 8px 24px rgba(28, 24, 38, 0.12);
+  --shadow-pop: 0 12px 40px rgba(34, 26, 82, 0.18);
+}
+
+[data-theme="dark"] {
+  --color-bg-canvas: var(--fala-neutral-950);
+  --color-bg-surface: var(--fala-neutral-900);
+  --color-bg-surface-hover: var(--fala-neutral-850);
+  --color-bg-inset: var(--fala-neutral-950);
+  --color-bg-vibrancy: rgba(28, 24, 38, 0.72);
+  --color-text-primary: #f4f2fa;
+  --color-text-secondary: var(--fala-neutral-400);
+  --color-text-tertiary: var(--fala-neutral-500);
+  --color-text-on-accent: #ffffff;
+  --color-accent: var(--fala-violet-400);
+  --color-accent-hover: var(--fala-violet-300);
+  --color-accent-active: var(--fala-violet-200);
+  --color-accent-soft: rgba(138, 120, 236, 0.18);
+  --color-accent-warm: var(--fala-amber-400);
+  --color-accent-warm-soft: rgba(252, 166, 78, 0.16);
+  --color-border: var(--fala-neutral-800);
+  --color-border-strong: var(--fala-neutral-700);
+  --color-focus-ring: rgba(138, 120, 236, 0.45);
+  --color-state-idle: var(--fala-neutral-400);         --color-state-idle-soft: var(--fala-neutral-850);
+  --color-state-recording: var(--fala-rose-400);       --color-state-recording-soft: rgba(255, 107, 147, 0.16);
+  --color-state-transcribing: var(--fala-violet-300);  --color-state-transcribing-soft: rgba(171, 157, 240, 0.16);
+  --color-state-success: var(--fala-green-400);        --color-state-success-soft: rgba(67, 197, 131, 0.16);
+  --color-state-error: var(--fala-red-400);            --color-state-error-soft: rgba(255, 107, 120, 0.16);
+  --color-state-warning: var(--fala-amber-300);        --color-state-warning-soft: rgba(255, 192, 119, 0.14);
+  --color-pill-bg: rgba(38, 33, 48, 0.92);
+  --color-pill-text: #f4f2fa;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-pop: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+/* ---------- keyframes ---------- */
+/* waveform bars · 900ms · ease-in-out · loop (gravação) */
+@keyframes fala-wave { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
+/* recording halo · 1.6s · ease-standard · loop */
+@keyframes fala-pulse { 0%, 100% { opacity: 0.35; transform: scale(1); } 50% { opacity: 0; transform: scale(1.5); } }
+/* transcribing spinner · 900ms · linear · loop */
+@keyframes fala-spin { to { transform: rotate(360deg); } }
+/* pill appear · 320ms (--motion-slow) · ease-spring · once */
+@keyframes fala-appear { from { opacity: 0; transform: translateY(12px) scale(0.92); } to { opacity: 1; transform: translateY(0) scale(1); } }
+/* pill dismiss · 200ms (--motion-base) · ease-standard · once */
+@keyframes fala-dismiss { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(8px) scale(0.95); } }
+
+/* Reduced motion: non-essential animation off; state remains legible by color/icon */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}

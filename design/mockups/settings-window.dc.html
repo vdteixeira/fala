@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/design-system-d3c8f6b0-6ee2-41dd-97ef-fcd1df065fd8/_ds_bundle.css">
+  <link rel="stylesheet" href="_ds/design-system-d3c8f6b0-6ee2-41dd-97ef-fcd1df065fd8/styles.css">
+  <script src="_ds/design-system-d3c8f6b0-6ee2-41dd-97ef-fcd1df065fd8/_ds_bundle.js"></script>
+  <link rel="stylesheet" href="fala-tokens.css">
+  <style>
+    body { margin: 0; }
+    a { color: #5341cd; text-decoration: none; }
+    a:hover { color: #4233a6; text-decoration: underline; }
+  </style>
+</helmet>
+<div data-theme="light" style="min-height: 100vh; background: var(--color-bg-canvas); font-family: var(--font-family-ui); color: var(--color-text-primary); padding: var(--space-5);">
+  <div style="max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--space-4);">
+
+    <header style="display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap;">
+      <h1 style="margin: 0; font-family: var(--font-family-display); font-size: var(--text-display-size); line-height: var(--text-display-line); font-weight: var(--text-display-weight); letter-spacing: -0.5px;">Superfície 3 · Janela de Ajustes</h1>
+      <div style="font-size: var(--text-body-size); color: var(--color-text-secondary);">janela macOS 520px · abas na barra de ferramentas · abas clicáveis neste protótipo</div>
+      <div style="margin-left: auto; font-family: var(--font-family-mono); font-size: var(--text-caption-size); color: var(--color-text-tertiary);">troca de aba: crossfade 200ms --ease-standard · toggle 120ms --ease-spring · progresso: width 200ms</div>
+    </header>
+
+    <sc-for list="{{ rows }}" as="row" hint-placeholder-count="5">
+      <section style="display: flex; flex-direction: column; gap: var(--space-2);">
+        <h2 style="margin: 0; font-family: var(--font-family-display); font-size: var(--text-title-size); font-weight: var(--text-title-weight);">{{ row.title }}</h2>
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-3); align-items: start;">
+          <sc-for list="{{ row.panes }}" as="p" hint-placeholder-count="2">
+            <div data-theme="{{ p.theme }}" style="min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-xl); background: var(--color-bg-canvas); padding: var(--space-3); display: flex; justify-content: center; color: var(--color-text-primary);">
+              <!-- JANELA · chrome macOS (traffic lights decorativos) -->
+              <div style="width: 520px; max-width: 100%; background: var(--color-bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); overflow: hidden; display: flex; flex-direction: column;">
+                <!-- barra de título + abas (vibrancy) -->
+                <div style="background: var(--color-bg-vibrancy); backdrop-filter: blur(24px); border-bottom: 1px solid var(--color-border);">
+                  <div style="display: flex; align-items: center; padding: var(--space-1) var(--space-2) var(--space-05);">
+                    <span style="display: inline-flex; gap: 6px;">
+                      <span style="width: 11px; height: 11px; border-radius: 50%; background: #ff5f57;"></span>
+                      <span style="width: 11px; height: 11px; border-radius: 50%; background: #febc2e; opacity: 0.4;"></span>
+                      <span style="width: 11px; height: 11px; border-radius: 50%; background: #28c840; opacity: 0.4;"></span>
+                    </span>
+                    <span style="flex: 1; text-align: center; font-size: var(--text-headline-size); font-weight: var(--text-headline-weight); margin-right: 45px;">Ajustes — Fala</span>
+                  </div>
+                  <!-- abas estilo barra de ferramentas · crossfade do conteúdo 200ms --ease-standard -->
+                  <div style="display: flex; justify-content: center; gap: var(--space-05); padding: var(--space-05) var(--space-1) var(--space-1);">
+                    <sc-for list="{{ p.tabs }}" as="t" hint-placeholder-count="5">
+                      <div onClick="{{ t.onClick }}" style="display: flex; flex-direction: column; align-items: center; gap: 2px; padding: var(--space-05) 10px; border-radius: var(--radius-sm); cursor: pointer; background: {{ t.bg }}; transition: background var(--motion-fast) var(--ease-standard);">
+                        <span class="material-symbols-outlined" style="font-size: 18px; color: {{ t.iconColor }};">{{ t.icon }}</span>
+                        <span style="font-size: var(--text-micro-size); font-weight: var(--text-micro-weight); color: {{ t.textColor }};">{{ t.label }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+                <!-- CONTEÚDO -->
+                <div style="padding: var(--space-2); display: flex; flex-direction: column; gap: var(--space-2); min-height: 240px;">
+
+                  <!-- ============ GERAL ============ -->
+                  <sc-if value="{{ p.isGeral }}" hint-placeholder-val="{{ true }}">
+                    <div style="display: flex; flex-direction: column; gap: var(--space-1);">
+                      <div style="display: flex; align-items: center; gap: var(--space-1); background: var(--color-bg-inset); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2);">
+                        <!-- SF Symbol: keyboard --><span class="material-symbols-outlined" style="font-size: 18px; color: var(--color-text-secondary);">keyboard</span>
+                        <div style="flex: 1; min-width: 0;">
+                          <div style="font-size: var(--text-body-size); font-weight: 600;">Atalho de ditado</div>
+                          <div style="font-size: var(--text-caption-size); color: var(--color-text-secondary);">Segure para falar, solte para inserir</div>
+                        </div>
+                        <!-- gravador de atalho · em gravação: borda pulsa fala-pulse 1.6s -->
+                        <div style="display: inline-flex; align-items: center; gap: var(--space-05); background: var(--color-bg-surface); border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); padding: 4px 10px; cursor: pointer; transition: border-color var(--motion-fast) var(--ease-standard);" style-hover="border-color: var(--color-accent);">
+                          <span style="font-family: var(--font-family-mono); font-size: var(--text-caption-size); font-weight: 600;">⌥ direito</span>
+                          <!-- SF Symbol: pencil --><span class="material-symbols-outlined" style="font-size: 13px; color: var(--color-text-tertiary);">edit</span>
+                        </div>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: var(--space-1); background: var(--color-bg-inset); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2);">
+                        <!-- SF Symbol: power --><span class="material-symbols-outlined" style="font-size: 18px; color: var(--color-text-secondary);">power_settings_new</span>
+                        <div style="flex: 1; font-size: var(--text-body-size); font-weight: 600;">Iniciar no login</div>
+                        <div onClick="{{ p.tLogin.onToggle }}" style="width: 36px; height: 22px; border-radius: var(--radius-pill); background: {{ p.tLogin.bg }}; padding: 2px; cursor: pointer; box-sizing: border-box; transition: background var(--motion-fast) var(--ease-standard);">
+                          <div style="width: 18px; height: 18px; border-radius: 50%; background: #ffffff; box-shadow: var(--shadow-sm); transform: {{ p.tLogin.knobX }}; transition: transform var(--motion-fast) var(--ease-spring);"></div>
+                        </div>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: var(--space-1); background: var(--color-bg-inset); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2);">
+                        <!-- SF Symbol: capsule.fill --><span class="material-symbols-outlined" style="font-size: 18px; color: var(--color-text-secondary);">pill</span>
+                        <div style="flex: 1; min-width: 0;">
+                          <div style="font-size: var(--text-body-size); font-weight: 600;">Mostrar overlay durante o ditado</div>
+                          <div style="font-size: var(--text-caption-size); color: var(--color-text-secondary);">Pílula flutuante na parte inferior da tela</div>
+                        </div>
+                        <div onClick="{{ p.tOverlay.onToggle }}" style="width: 36px; height: 22px; border-radius: var(--radius-pill); background: {{ p.tOverlay.bg }}; padding: 2px; cursor: pointer; box-sizing: border-box; transition: background var(--motion-fast) var(--ease-standard);">
+                          <div style="width: 18px; height: 18px; border-radius: 50%; background: #ffffff; box-shadow: var(--shadow-sm); transform: {{ p.tOverlay.knobX }}; transition: transform var(--motion-fast) var(--ease-spring);"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </sc-if>
+
+                  <!-- ============ ÁUDIO ============ -->
+                  <sc-if value="{{ p.isAudio }}" hint-placeholder-val="{{ false }}">
+                    <div style="display: flex; flex-direction: column; gap: var(--space-1);">
+                      <div style="display: flex; align-items: center; gap: var(--space-1); background: var(--color-bg-inset); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2);">
+                        <!-- SF Symbol: mic.fill --><span class="material-symbols-outlined" style="font-size: 18px; color: var(--color-text-secondary);">mic</span>
+                        <div style="flex: 1; font-size: var(--text-body-size); font-weight: 600;">Dispositivo de entrada</div>
+                        <select onChange="{{ p.onDevice }}" value="{{ deviceValue }}" style="font-family: var(--font-family-ui); font-size: var(--text-caption-size); color: var(--color-text-primary); background: var(--color-bg-surface); border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); padding: 5px 8px; outline: none;">
+                          <option value="internal">Microfone interno (recomendado)</option>
+                          <option value="airpods">AirPods do Pedro (HFP)</option>
+                          <option value="usb">Interface USB — Focusrite</option>
+                        </select>
+                      </div>
+                      <!-- aviso HFP · aparece fala-appear 320ms --ease-spring quando dispositivo Bluetooth/HFP -->
+                      <sc-if value="{{ showHfp }}" hint-placeholder-val="{{ true }}">
+                        <div style="display: flex; align-items: flex-start; gap: var(--space-1); background: var(--color-state-warning-soft); border: 1px solid var(--color-state-warning); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2); animation: fala-appear var(--motion-slow) var(--ease-spring);">
+                          <!-- SF Symbol: airpods --><span class="material-symbols-outlined" style="font-size: 18px; color: var(--color-state-warning); flex: none;">headphones</span>
+                          <div style="font-size: var(--text-caption-size); line-height: var(--text-caption-line);">Qualidade reduzida com AirPods (HFP). <strong>Prefira o microfone interno.</strong></div>
+                        </div>
+                      </sc-if>
+                      <div style="display: flex; align-items: center; gap: var(--space-1); background: var(--color-bg-inset); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2);">
+                        <!-- SF Symbol: waveform --><span class="material-symbols-outlined" style="font-size: 18px; color: var(--color-state-recording);">graphic_eq</span>
+                        <div style="flex: 1; font-size: var(--text-body-size); font-weight: 600;">Nível de entrada</div>
+                        <!-- medidor (funcional): 12 segmentos, atualiza a cada 50ms sem transição -->
+                        <span style="display: inline-flex; gap: 2px; align-items: center;">
+                          <sc-for list="{{ meterSegs }}" as="seg" hint-placeholder-count="12">
+                            <span style="width: 4px; height: 12px; border-radius: 1.5px; background: {{ seg.c }};"></span>
+                          </sc-for>
+                        </span>
+                      </div>
+                    </div>
+                  </sc-if>
+
+                  <!-- ============ DICIONÁRIO ============ -->
+                  <sc-if value="{{ p.isDict }}" hint-placeholder-val="{{ false }}">
+                    <div style="display: flex; flex-direction: column; gap: var(--space-1);">
+                      <div style="font-size: var(--text-caption-size); color: var(--color-text-secondary);">Termos técnicos preservados na transcrição (PT-EN):</div>
+                      <div style="display: flex; flex-direction: column; border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden;">
+                        <sc-for list="{{ p.terms }}" as="term" hint-placeholder-count="5">
+                          <div style="display: flex; align-items: center; gap: var(--space-1); padding: 6px var(--space-2); border-bottom: 1px solid var(--color-border); background: var(--color-bg-surface); transition: background var(--motion-fast) var(--ease-standard);" style-hover="background: var(--color-bg-surface-hover);">
+                            <!-- SF Symbol: character.book.closed.fill --><span class="material-symbols-outlined" style="font-size: 14px; color: var(--color-accent);">menu_book</span>
+                            <span style="flex: 1; font-family: var(--font-family-mono); font-size: var(--text-caption-size);">{{ term.word }}</span>
+                            <!-- SF Symbol: trash --><span onClick="{{ term.onRemove }}" class="material-symbols-outlined" style="font-size: 15px; color: var(--color-text-tertiary); cursor: pointer; transition: color var(--motion-fast) var(--ease-standard);" style-hover="color: var(--color-state-error);" title="Remover">delete</span>
+                          </div>
+                        </sc-for>
+                      </div>
+                      <div style="display: flex; gap: var(--space-1);">
+                        <input value="{{ newTerm }}" onChange="{{ onNewTerm }}" placeholder="Adicionar termo…" style="flex: 1; min-width: 0; font-family: var(--font-family-ui); font-size: var(--text-caption-size); color: var(--color-text-primary); background: var(--color-bg-inset); border: 1px solid var(--color-border); border-radius: var(--radius-sm); padding: 6px 10px; outline: none; transition: box-shadow var(--motion-base) var(--ease-standard), border-color var(--motion-base) var(--ease-standard);" style-focus="border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-focus-ring);">
+                        <button onClick="{{ onAddTerm }}" style="font-family: var(--font-family-ui); font-size: var(--text-caption-size); font-weight: 600; color: var(--color-text-on-accent); background: var(--color-accent); border: none; border-radius: var(--radius-sm); padding: 6px 12px; cursor: pointer; transition: background var(--motion-fast) var(--ease-standard);" style-hover="background: var(--color-accent-hover);">Adicionar termo</button>
+                      </div>
+                      <div style="display: flex; gap: var(--space-1); justify-content: flex-end;">
+                        <!-- SF Symbol: square.and.arrow.down --><button style="display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-family-ui); font-size: var(--text-caption-size); font-weight: 600; color: var(--color-accent); background: var(--color-accent-soft); border: none; border-radius: var(--radius-sm); padding: 5px 10px; cursor: pointer;"><span class="material-symbols-outlined" style="font-size: 14px;">download</span>Importar JSON</button>
+                        <!-- SF Symbol: square.and.arrow.up --><button style="display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-family-ui); font-size: var(--text-caption-size); font-weight: 600; color: var(--color-accent); background: var(--color-accent-soft); border: none; border-radius: var(--radius-sm); padding: 5px 10px; cursor: pointer;"><span class="material-symbols-outlined" style="font-size: 14px;">upload</span>Exportar JSON</button>
+                      </div>
+                    </div>
+                  </sc-if>
+
+                  <!-- ============ MODELO ============ -->
+                  <sc-if value="{{ p.isModel }}" hint-placeholder-val="{{ false }}">
+                    <div style="display: flex; flex-direction: column; gap: var(--space-1);">
+                      <div style="display: flex; align-items: center; gap: var(--space-1); background: var(--color-bg-inset); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2);">
+                        <!-- SF Symbol: cpu --><span class="material-symbols-outlined" style="font-size: 20px; color: var(--color-state-success);">memory</span>
+                        <div style="flex: 1; min-width: 0;">
+                          <div style="font-size: var(--text-body-size); font-weight: 600;">Parakeet v3 · pt-BR</div>
+                          <div style="font-size: var(--text-caption-size); color: var(--color-text-secondary);">1,1 GB em disco · verificado hoje</div>
+                        </div>
+                        <button style="font-family: var(--font-family-ui); font-size: var(--text-caption-size); font-weight: 600; color: var(--color-accent); background: var(--color-accent-soft); border: none; border-radius: var(--radius-sm); padding: 5px 10px; cursor: pointer; flex: none;">Baixar novamente</button>
+                      </div>
+                      <!-- variante: novo download em andamento -->
+                      <div style="display: flex; flex-direction: column; gap: var(--space-05); background: var(--color-bg-inset); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2);">
+                        <div style="display: flex; align-items: center; gap: var(--space-1);">
+                          <!-- SF Symbol: arrow.down.circle --><span class="material-symbols-outlined" style="font-size: 18px; color: var(--color-state-transcribing); animation: fala-pulse 1.6s var(--ease-standard) infinite;">download</span>
+                          <div style="flex: 1; font-size: var(--text-caption-size); font-weight: 600;">Baixando novamente… {{ modelPct }}%</div>
+                          <span onClick="{{ noop }}" style="font-size: var(--text-caption-size); color: var(--color-text-tertiary); cursor: pointer;">Cancelar</span>
+                        </div>
+                        <div style="height: 4px; border-radius: var(--radius-pill); background: var(--color-bg-surface); overflow: hidden;">
+                          <div style="height: 100%; width: {{ modelPctW }}; background: var(--color-state-transcribing); transition: width var(--motion-base) var(--ease-standard);"></div>
+                        </div>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-2); font-size: var(--text-caption-size); color: var(--color-text-tertiary);">
+                        <!-- SF Symbol: internaldrive --><span class="material-symbols-outlined" style="font-size: 14px;">hard_drive</span>182 GB livres em Macintosh HD
+                      </div>
+                    </div>
+                  </sc-if>
+
+                  <!-- ============ PRIVACIDADE ============ -->
+                  <sc-if value="{{ p.isPrivacy }}" hint-placeholder-val="{{ false }}">
+                    <div style="display: flex; flex-direction: column; gap: var(--space-2); align-items: center; text-align: center; padding: var(--space-1) 0;">
+                      <!-- ilustração decorativa: cadeado + waveform contido -->
+                      <div style="width: 72px; height: 72px; border-radius: 50%; background: var(--color-accent-soft); display: flex; align-items: center; justify-content: center; position: relative;">
+                        <!-- SF Symbol: lock.shield.fill --><span class="material-symbols-outlined" style="font-size: 34px; color: var(--color-accent);">shield_lock</span>
+                        <span style="position: absolute; bottom: 6px; display: inline-flex; gap: 2px; align-items: center;">
+                          <span style="width: 3px; height: 5px; border-radius: 1px; background: var(--color-accent-warm);"></span>
+                          <span style="width: 3px; height: 9px; border-radius: 1px; background: var(--color-accent-warm);"></span>
+                          <span style="width: 3px; height: 6px; border-radius: 1px; background: var(--color-accent-warm);"></span>
+                        </span>
+                      </div>
+                      <div style="font-family: var(--font-family-display); font-size: var(--text-title-size); line-height: var(--text-title-line); font-weight: var(--text-title-weight);">Sua voz não sai do seu Mac.</div>
+                      <div style="font-size: var(--text-body-size); line-height: var(--text-body-line); color: var(--color-text-secondary); max-width: 380px;">Todo o reconhecimento acontece no chip do seu Mac. Nenhum áudio, texto ou métrica de uso é enviado a servidores — nem nossos, nem de terceiros.</div>
+                      <div style="display: flex; flex-direction: column; gap: var(--space-05); width: 100%; max-width: 380px; text-align: left;">
+                        <div style="display: flex; align-items: center; gap: var(--space-1); background: var(--color-bg-inset); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2); font-size: var(--text-caption-size);">
+                          <!-- SF Symbol: cpu --><span class="material-symbols-outlined" style="font-size: 16px; color: var(--color-accent);">memory</span>Processamento 100% local, no Apple Silicon
+                        </div>
+                        <div style="display: flex; align-items: center; gap: var(--space-1); background: var(--color-bg-inset); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2); font-size: var(--text-caption-size);">
+                          <!-- SF Symbol: wifi.slash --><span class="material-symbols-outlined" style="font-size: 16px; color: var(--color-accent);">wifi_off</span>Funciona offline · sem telemetria, sem contas
+                        </div>
+                        <div style="display: flex; align-items: center; gap: var(--space-1); background: var(--color-bg-inset); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2); font-size: var(--text-caption-size);">
+                          <!-- SF Symbol: checkmark.shield --><span class="material-symbols-outlined" style="font-size: 16px; color: var(--color-accent);">verified_user</span>Alinhado à LGPD: seus dados nunca são coletados
+                        </div>
+                      </div>
+                      <div style="display: inline-flex; align-items: center; gap: var(--space-05); padding: 5px 12px; border-radius: var(--radius-pill); background: var(--color-accent-soft); border: 1px solid var(--color-accent); color: var(--color-accent); font-size: var(--text-caption-size); font-weight: 600;">
+                        <!-- SF Symbol: lock.shield.fill --><span class="material-symbols-outlined" style="font-size: 14px;">lock</span>100% no seu Mac · sem telemetria
+                      </div>
+                    </div>
+                  </sc-if>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+    </sc-for>
+
+    <footer style="display: flex; gap: var(--space-2); font-size: var(--text-caption-size); line-height: var(--text-caption-line); color: var(--color-text-secondary); flex-wrap: wrap;">
+      <div style="background: var(--color-bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2);"><strong style="color: var(--color-text-primary);">Funcional:</strong> abas, gravador de atalho, toggles, seletor de dispositivo + aviso HFP, medidor de nível, lista do dicionário (adicionar/remover), progresso do modelo, conteúdo de privacidade.</div>
+      <div style="background: var(--color-bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2);"><strong style="color: var(--color-text-primary);">Decorativo:</strong> traffic lights, vibrancy da barra, ilustração cadeado+waveform, pulso do download.</div>
+      <div style="background: var(--color-bg-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-1) var(--space-2);"><strong style="color: var(--color-text-primary);">Reduced motion:</strong> sem crossfade/pulso/spring; estados trocam instantaneamente (fala-tokens.css).</div>
+    </footer>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;redownloadProgress&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 38, &quot;min&quot;: 0, &quot;max&quot;: 100, &quot;step&quot;: 1, &quot;unit&quot;: &quot;%&quot;, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Modelo&quot; }
+}">
+class Component extends DCLogic {
+  state = {
+    toggles: {}, tabOverrides: {},
+    terms: ['deploy', 'endpoint', 'Kubernetes', 'commit', 'pull request'],
+    newTerm: '', device: 'airpods'
+  };
+  renderVals() {
+    const pct = Math.round(this.props.redownloadProgress ?? 38);
+    const tabDefs = [
+      { key: 'geral', label: 'Geral', icon: 'settings' },        /* SF Symbol: gearshape.fill */
+      { key: 'audio', label: 'Áudio', icon: 'mic' },             /* SF Symbol: mic.fill */
+      { key: 'dict', label: 'Dicionário', icon: 'menu_book' },   /* SF Symbol: character.book.closed.fill */
+      { key: 'model', label: 'Modelo', icon: 'memory' },         /* SF Symbol: cpu */
+      { key: 'privacy', label: 'Privacidade', icon: 'shield_lock' } /* SF Symbol: lock.shield.fill */
+    ];
+    const mkToggle = (id, def) => {
+      const on = this.state.toggles[id] ?? def;
+      return {
+        onToggle: () => this.setState(s => ({ toggles: { ...s.toggles, [id]: !(s.toggles[id] ?? def) } })),
+        bg: on ? 'var(--color-accent)' : 'var(--color-border-strong)',
+        knobX: on ? 'translateX(14px)' : 'translateX(0)'
+      };
+    };
+    const mkPane = (rowKey, theme) => {
+      const pk = rowKey + '-' + theme;
+      const tab = this.state.tabOverrides[pk] ?? rowKey;
+      return {
+        theme,
+        tabs: tabDefs.map(t => ({
+          ...t,
+          onClick: () => this.setState(s => ({ tabOverrides: { ...s.tabOverrides, [pk]: t.key } })),
+          bg: t.key === tab ? 'var(--color-accent-soft)' : 'transparent',
+          iconColor: t.key === tab ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+          textColor: t.key === tab ? 'var(--color-accent)' : 'var(--color-text-secondary)'
+        })),
+        isGeral: tab === 'geral', isAudio: tab === 'audio', isDict: tab === 'dict',
+        isModel: tab === 'model', isPrivacy: tab === 'privacy',
+        tLogin: mkToggle(pk + '-login', true),
+        tOverlay: mkToggle(pk + '-overlay', true),
+        onDevice: (e) => this.setState({ device: e.target.value }),
+        terms: this.state.terms.map((word, i) => ({
+          word, onRemove: () => this.setState(s => ({ terms: s.terms.filter((_, j) => j !== i) }))
+        }))
+      };
+    };
+    const rows = [
+      { key: 'geral', title: 'Aba Geral' },
+      { key: 'audio', title: 'Aba Áudio · aviso HFP' },
+      { key: 'dict', title: 'Aba Dicionário' },
+      { key: 'privacy', title: 'Aba Privacidade · núcleo emocional da marca' },
+      { key: 'model', title: 'Aba Modelo (render secundário) · com re-download em andamento' }
+    ].map(r => ({ ...r, panes: [mkPane(r.key, 'light'), mkPane(r.key, 'dark')] }));
+    const levels = [1,1,1,1,1,1,1,1,0,0,0,0]; /* medidor estático no mock */
+    const meterSegs = levels.map((v, i) => ({
+      c: v ? (i > 9 ? 'var(--color-state-warning)' : 'var(--color-state-recording)') : 'var(--color-border)'
+    }));
+    return {
+      rows, meterSegs,
+      deviceValue: this.state.device,
+      showHfp: this.state.device === 'airpods',
+      newTerm: this.state.newTerm,
+      onNewTerm: (e) => this.setState({ newTerm: e.target.value }),
+      onAddTerm: () => { const w = this.state.newTerm.trim(); if (w) this.setState(s => ({ terms: [...s.terms, w], newTerm: '' })); },
+      modelPct: pct, modelPctW: pct + '%',
+      noop: () => {}
+    };
+  }
+}
+</script>
+</body>
+</html>
