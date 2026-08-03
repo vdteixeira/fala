@@ -271,7 +271,22 @@ func runDictation() async {
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 
-switch arguments.first {
+// NFR-4: refuse before anything expensive. `doctor` and `--version` are exempt so
+// a refused user can still produce a diagnostic to send back.
+if let refusal = HostPlatform().refusal,
+  arguments.first != "doctor", arguments.first != "--version"
+{
+  say(refusal.title)
+  say("")
+  say(refusal.explanation)
+  exit(1)
+}
+
+// NO ARGUMENT = MENU BAR. LaunchServices passes none, so double-clicking
+// Fala.app in the Finder used to fall through to `default`, print the CLI usage
+// to a stdout nobody can see, and exit — the app simply did nothing. That made
+// the whole .dmg useless for anyone who did not know to pass `menubar`.
+switch arguments.first ?? "menubar" {
 case "doctor":
   runDoctor()
 case "listen":

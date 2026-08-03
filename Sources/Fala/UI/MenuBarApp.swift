@@ -45,6 +45,23 @@ final class MenuBarAppDelegate: NSObject, NSApplicationDelegate {
   private var pipeline: DictationPipeline?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    // NFR-4, FIRST: before the microphone prompt and before any model download.
+    // A refused machine must be told why rather than led through a TCC dialog and
+    // a 480 MB fetch that can never work.
+    if let refusal = HostPlatform().refusal {
+      // The app is .accessory/LSUIElement, so without activating first the modal
+      // can open behind other windows and a user who just double-clicked sees
+      // nothing happen at all.
+      NSApp.activate(ignoringOtherApps: true)
+      let alert = NSAlert()
+      alert.messageText = refusal.title
+      alert.informativeText = refusal.explanation
+      alert.alertStyle = .critical
+      alert.runModal()
+      NSApp.terminate(nil)
+      return
+    }
+
     let dictation = DictationSwitch()
     // One store, shared: the pipeline writes to it and the popover reads from it.
     // Two instances would render an empty "Recentes" over a populated file.
@@ -209,8 +226,15 @@ final class DictationPipeline {
   /// block reads "baixa no primeiro uso" and the first dictation pays the cost —
   /// the same contract `Fala doctor` already states.
   private func prepareModel(_ engine: ParakeetEngine, allowDownload: Bool) {
-    guard allowDownload || ModelStatus.current().isPresent else { return }
-    if allowDownload {
+    let status = ModelStatus.current()
+    // On a machine that has never run Fala the model is absent, and returning
+    // here left the app in a state where EVERY dictation failed with "A
+    // transcrição falhou." and the popover offered no way out — fatal for anyone
+    // who received this as a .dmg. Fetch it, and show it being fetched: the
+    // popover has a "baixando" variant precisely for this.
+    let mustFetch = !status.isPresent
+    guard allowDownload || mustFetch || status.isPresent else { return }
+    if allowDownload || mustFetch {
       presenter.reportModelProgress(.unknown)
     }
     tasks.append(

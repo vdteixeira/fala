@@ -169,7 +169,6 @@ Depends on Phase 1 + DESIGN.md tokens available in `/design`.
       per-entry delete already exist (T2.5); only the window is absent. NOTE: the
       mockup itself was never produced, so this needs a design pass first.
 - [ ] T2.9 LaunchAgent autostart (opt-in) via CLI `install --launch-at-login`.
-- [ ] T2.10 PT-BR user docs: `docs/pt-BR/instalacao.md`, `permissoes.md`, `uso.md`.
 **GATE 2:** UI matches mockups (visual diff), permissions handled gracefully, docs in
 PT-BR complete. Human OK required.
 Cannot close today for three independent reasons: two of the four designed surfaces
@@ -180,6 +179,21 @@ so no visual diff exists; and `docs/pt-BR/` is empty (T2.10).
 Depends on Phase 2.
 - [ ] T3.1 (Optional) Streaming engine behind a flag (Parakeet EOU / SlidingWindow).
 - [ ] T3.2 (Optional) Local LLM cleanup behind a flag (off by default).
-- [ ] T3.3 Developer ID signing + notarization + `.dmg` via `scripts/ship.sh`.
-      DoD: Gatekeeper opens the notarized app on a clean machine.
+- [~] T3.3 `scripts/ship.sh` produces `dist/Fala-<version>.dmg` (3.3 MB): release
+      build, bundle with the resource bundle, entitlements, signature, DMG with an
+      Applications symlink and the pt-BR install guide as LEIA-ME.md. Verified by
+      mounting it and running the packaged binary.
+      **NOTARIZATION IS BLOCKED, not skipped:** `security find-identity` reports 0
+      valid identities. It needs a paid Apple Developer account (99 USD/yr) and a
+      "Developer ID Application" certificate. The script signs with Developer ID +
+      hardened runtime + `notarytool` the moment one exists; without it, it signs
+      ad-hoc and says so. `spctl --assess` → **rejected**, which is exactly what a
+      recipient will hit. DoD ("Gatekeeper opens the notarized app on a clean
+      machine") is NOT met and cannot be until the certificate exists.
+- [x] T2.10 PT-BR user docs: `docs/pt-BR/{instalacao,permissoes,uso}.md`.
+- [x] NFR-4 Apple Silicon / Rosetta / macOS-floor refusal (`HostPlatform`), wired
+      into both the CLI and the menu-bar startup, with a pt-BR explanation. 25 tests.
+      Measured on this machine: `hw.optional.arm64` reports 1 EVEN UNDER ROSETTA, so
+      an architecture-only check (and any `#if arch(arm64)`) waves a translated
+      process through — `sysctl.proc_translated` is the only discriminating signal.
 **GATE 3:** signed, notarized, distributable. Human OK required.

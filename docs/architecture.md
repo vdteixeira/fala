@@ -315,3 +315,42 @@ Two FR-18 defects fixed after review:
 downloaded" from "downloaded and broken" (an interrupted transfer used to read as
 ready), and the dictionary goes through `JargonDictionaryStore` so the user's
 override file and its complaints actually surface.
+
+## Phase 3 — distribution (2026-08-02)
+`scripts/ship.sh` builds `dist/Fala-<version>.dmg`. Verified by mounting the image
+and running the packaged binary.
+
+**Notarization is blocked on a purchase, not on code.** `security find-identity`
+reports 0 valid identities: there is no "Developer ID Application" certificate on
+this machine, and getting one requires a paid Apple Developer account. The script
+takes the real path the moment one exists (hardened runtime, `--options runtime`,
+`notarytool submit --wait`, `stapler staple`) and otherwise signs ad-hoc and says
+so plainly. `spctl --assess` → `rejected`, which is what a recipient hits.
+
+**Two defects made the .dmg useless, and both were found by the docs agent reading
+the code rather than by a test:**
+- **Double-clicking Fala.app did nothing.** `main.swift` switched on
+  `arguments.first`, and LaunchServices passes no argument, so a Finder launch fell
+  to `default`, printed CLI usage to a stdout nobody sees, and exited. No argument
+  now means `menubar`.
+- **The menu-bar app never downloaded the model.** `prepareModel` returned early
+  when the model was absent, and `ParakeetEngine` does not load lazily, so on a
+  clean machine EVERY dictation failed with "A transcrição falhou." with no UI path
+  to recover. It now fetches on first run and shows the popover's "baixando" state.
+
+Neither is exotic; both are invisible to anyone whose `.build` and model cache
+already exist. That is the recurring shape of this whole phase: the failures that
+matter for distribution are the ones the author's machine cannot exhibit.
+
+**Entitlements** live in `Resources/Fala.entitlements` with the reasoning in
+`Resources/README-entitlements.md` — the plist itself must carry no XML comments,
+because `codesign` hands it to AMFI's stricter parser (`AMFIUnserializeXML: syntax
+error`). The app is deliberately NOT sandboxed: the sandbox forbids `CGEventTap`
+(FR-1) and synthesising the paste chord (FR-11), so a sandboxed build cannot
+dictate at all. That rules out the App Store and makes Developer ID the only route.
+
+**arm64-only, deliberately.** `ship.sh` does not build universal. The consequence,
+measured: with an arm64-only binary an Intel Mac never execs it (macOS shows its
+own dialog) and translation is impossible, so `HostPlatform`'s refusals are purely
+defensive on this build. They become load-bearing only if the .dmg ever ships
+universal — which would also require FluidAudio and CoreML to build x86_64.

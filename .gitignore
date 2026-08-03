@@ -8,3 +8,4 @@ DerivedData/
 models/
 spike/audio/
 build/
+dist/

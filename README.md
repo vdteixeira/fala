@@ -55,4 +55,5 @@ Use `./scripts/test.sh`, não `swift test`: a biblioteca de testes só existe no
 toolchain completo do Xcode, e o wrapper cuida disso sem contaminar o `.build`.
 
 Documentação para desenvolvimento: CLAUDE.md, SPEC.md, TASKS.md, DESIGN.md
-(em inglês). Guias de uso em `docs/pt-BR/` chegam na Fase 2.
+(em inglês). Guias de uso, em português: [`docs/pt-BR/instalacao.md`](docs/pt-BR/instalacao.md),
+[`permissoes.md`](docs/pt-BR/permissoes.md), [`uso.md`](docs/pt-BR/uso.md).

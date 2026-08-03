@@ -240,7 +240,7 @@ public struct SystemUnicodeKeystrokeEmitter: UnicodeKeystrokeEmitting {
     keyDown.flags = []
     keyUp.flags = []
 
-    var units = Array(chunk.utf16)
+    let units = Array(chunk.utf16)
     // Set on BOTH events: apps differ in which one they read the payload from,
     // and a key-up carrying the same string is how every long-lived
     // implementation of this technique does it.
