@@ -177,6 +177,9 @@ public struct JargonDictionaryStore: Sendable {
     let base =
       FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
       ?? fallback
+    // Deliberately NOT MenuBarStrings.brandName: this is where the user's data
+    // lives. Following a rename would orphan every existing dictionary and
+    // history file in a directory nothing looks at any more.
     return base.appendingPathComponent("Fala", isDirectory: true)
   }
 
@@ -285,7 +288,7 @@ public struct JargonDictionaryStore: Sendable {
   /// they are the file format, shared with the bundled dictionary.
   static let template = """
     {
-      "$comment": "Este arquivo é seu. O Fala nunca sobrescreve o que você escrever aqui.",
+      "$comment": "Este arquivo é seu. O \(MenuBarStrings.brandName) nunca sobrescreve o que você escrever aqui.",
       "$comoFunciona": [
         "Ele é MESCLADO por cima do dicionário embutido: o que estiver aqui vence.",
         "entries: mesma forma das entradas embutidas. Se o 'from' já existir no \
@@ -299,7 +302,7 @@ public struct JargonDictionaryStore: Sendable {
         "A troca só acontece em palavras inteiras, sem diferenciar maiúsculas nem acentos.",
         "Para ver os 'from' de fábrica (os que você pode substituir ou desligar), rode \
     'fala doctor': ele mostra o caminho do dicionário embutido.",
-        "Se este arquivo tiver erro de sintaxe, o Fala volta a usar só o dicionário \
+        "Se este arquivo tiver erro de sintaxe, o \(MenuBarStrings.brandName) volta a usar só o dicionário \
     embutido e explica o motivo em 'fala doctor'. Sua ditada não para por causa disso."
       ],
       "$exemplo": {

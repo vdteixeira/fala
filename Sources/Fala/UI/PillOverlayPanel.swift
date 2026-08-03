@@ -86,6 +86,9 @@ final class PillOverlayController {
   private let panel: PillOverlayPanel
 
   private var input: PillInput
+  /// FR-21 "Mostrar overlay durante o ditado". Presentation-only: dictation keeps
+  /// working while this is true, the user just does not see the pill.
+  private var isSuppressed = false
   private var stateTask: Task<Void, Never>?
   private var dismissTask: Task<Void, Never>?
   private var orderOutTask: Task<Void, Never>?
@@ -145,6 +148,29 @@ final class PillOverlayController {
     }
   }
 
+  /// FR-21 / Ajustes › Geral: "Mostrar overlay durante o ditado".
+  ///
+  /// Suppression is presentation-only — the coordinator keeps running and the
+  /// user keeps dictating, they simply see nothing. Turning it back on picks up
+  /// the current state from the stream, which is already live.
+  /// Follows a hotkey change (Ajustes › Geral).
+  ///
+  /// The keycap the pill draws is the user's instruction for how to dictate, so
+  /// leaving it on the old key after a rebind tells them to press something that
+  /// no longer works.
+  func setHotkey(_ hotkey: Hotkey) {
+    guard input.hotkey != hotkey else { return }
+    update { $0.hotkey = hotkey }
+  }
+
+  func setSuppressed(_ suppressed: Bool) {
+    guard isSuppressed != suppressed else { return }
+    isSuppressed = suppressed
+    // Re-apply so turning it off hides an already-visible pill immediately, and
+    // turning it back on picks up whatever the current state is.
+    apply(PillOverlayContent.initial(for: input))
+  }
+
   /// Told by the audio layer (TASKS.md T2.6) that the input route is Bluetooth
   /// HFP. Shows the persistent amber warning; never blocks dictation.
   func setAudioRouteDegraded(_ degraded: Bool) {
@@ -181,7 +207,10 @@ final class PillOverlayController {
     scheduleDismissal(of: next)
   }
 
-  private func setContent(_ next: PillOverlayContent) {
+  private func setContent(_ content: PillOverlayContent) {
+    // FR-21: the user asked not to see the overlay. Everything upstream keeps
+    // running — this hides the panel, it does not stop the dictation.
+    let next: PillOverlayContent = isSuppressed ? .hidden : content
     let previous = model.content
     guard previous != next else { return }
 

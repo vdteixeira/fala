@@ -26,7 +26,10 @@ public actor DictationCoordinator {
   private let capture: any AudioCapturing
   private let engine: any TranscriptionEngine
   private let injector: any TextInjector
-  private let dictionary: JargonDictionary?
+  /// `var`, not `let`: edits in Ajustes › Dicionário must reach the NEXT
+  /// dictation. Making the user relaunch to pick up a term they just added is
+  /// the kind of gap that makes an editor feel broken.
+  private var dictionary: JargonDictionary?
   /// FR-17. Optional, and asked for nothing but a successful injection: the
   /// coordinator neither knows nor cares where the entry goes. `nil` means the
   /// app keeps no history, which is what every existing call site gets.
@@ -38,7 +41,7 @@ public actor DictationCoordinator {
   /// Terms the engine should favour. Empty unless a dictionary is loaded; passed
   /// through the protocol's opaque `biasTerms`, so no engine's vocabulary API
   /// leaks in here.
-  private let biasTerms: [String]
+  private var biasTerms: [String]
 
   public init(
     capture: any AudioCapturing,
@@ -56,6 +59,14 @@ public actor DictationCoordinator {
   }
 
   public var currentState: DictationState { state }
+
+  /// Swaps the jargon dictionary. Applies from the next dictation on; one in
+  /// flight keeps the rules it started with, so a mid-utterance edit cannot
+  /// produce half-substituted text.
+  public func setDictionary(_ dictionary: JargonDictionary?) {
+    self.dictionary = dictionary
+    self.biasTerms = dictionary?.biasTerms ?? []
+  }
 
   /// States, for the overlay. Each subscriber gets the current state immediately
   /// so a late subscriber is never out of sync.

@@ -252,7 +252,12 @@ public protocol LastInjectionProviding: Sendable {
 /// pt-BR strings for the history surfaces (project rule: user-facing text is
 /// Brazilian Portuguese; identifiers stay English).
 public enum DictationHistoryStrings {
-  public static let windowTitle = "Histórico — Fala"
+  /// Shown when a row action arrives while another one is still running. The
+  /// alternative — returning silently — reported the first action's success
+  /// while the second row was still on screen.
+  public static let busyRetryShortly = "Ainda terminando a ação anterior. Tente de novo."
+
+  public static let windowTitle = "Histórico — \(MenuBarStrings.brandName)"
   public static let empty = "Nenhuma ditada guardada ainda."
   public static let eraseAll = "Apagar tudo"
   public static let eraseAllConfirm = "Apagar todo o histórico? Isso não pode ser desfeito."

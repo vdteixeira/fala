@@ -354,3 +354,102 @@ measured: with an arm64-only binary an Intel Mac never execs it (macOS shows its
 own dialog) and translation is impossible, so `HostPlatform`'s refusals are purely
 defensive on this build. They become load-bearing only if the .dmg ever ships
 universal — which would also require FluidAudio and CoreML to build x86_64.
+
+## Settings and History windows (2026-08-03)
+976 tests / 103 suites. Both windows exist, are wired to the menu, and neither has
+ever been seen by a human.
+
+Five capabilities had to be built before the settings window could mean anything:
+the input level meter (a real change to `AudioCapture`, not a view), start-at-login
+via `SMAppService`, a preferences store (showOverlay + hotkey), dictionary export,
+and free-disk + a cancellable model download.
+
+**The level meter forced a real decision.** Monitoring and dictation are mutually
+EXCLUSIVE: starting a dictation tears the settings preview's session down, runs on
+its own, and resumes the preview afterwards. The reason is `stop()`'s
+drain-then-flush — the FR-4 path with a documented truncation history — which has
+only ever been verified on a session that begins and ends with the utterance. The
+cost is one engine restart per keypress while the settings window is open, and that
+cycling has never run on hardware. Worth a T1.10-style manual item.
+
+### Two severe defects found by review and fixed
+- **DATA LOSS (settings).** A user dictionary file that failed to parse left the
+  in-memory override EMPTY while every button stayed live; the next edit wrote that
+  emptiness over the file atomically, with no backup. The type's own header already
+  promised the opposite ("Reported instead of overwriting: the file may hold terms
+  the user spent time on") — the report was there, the refusal was not. Every
+  mutation now goes through one choke point that refuses while the source is
+  unreadable. Pinned by a test that writes a genuinely malformed file and asserts
+  the bytes on disk are unchanged after an attempted edit.
+- **PRIVACY (history).** `forget()` runs synchronously from `windowWillClose`;
+  `load()` suspends twice. Closing the window let the continuation repopulate the
+  model afterwards, leaving every transcript and its folded search copy resident
+  for the process lifetime — defeating the only guarantee `HistoryWindowModel`
+  advertises. A generation counter was NOT enough: `show()` starts the load in an
+  unstructured Task, so a fast close runs `forget()` before the load has even
+  begun, and the token it later captured was one nothing had invalidated. Fixed
+  with a session flag (`beginSession()` / `forget()`) checked BOTH before and after
+  the suspensions. Two tests, each verified by mutation — the entry guard and the
+  post-await guard fail independently.
+- Also fixed: a second history row action arriving during the first was dropped
+  silently, so the app reported "Ditada apagada." while the row the user clicked
+  was still on screen.
+
+### Integration, again
+Same pattern as every previous round: both windows shipped as unreachable code with
+`openSettings`/`openHistory` still nil. Now wired. The settings window is built
+LAZILY on first open — every one of its presenters does synchronous disk work in
+its initialiser (model directory enumeration, volume stat, dictionary reads,
+`SMAppService` status), and doing that at launch is main-thread latency for a window
+most launches never open. The Áudio tab observes the SAME `AudioCapture` the
+pipeline dictates with; a second instance would be two `AVAudioEngine`s on one
+microphone, which is the stacked-instance failure recorded above.
+
+### The hotkey preference never reached the tap (2026-08-03)
+Reported from real use: changing the hotkey in Ajustes did nothing. Two
+independent gaps, both integration rather than logic — the recorder, the
+preference store and the `hotkeyChanged` hook were all correct and all
+unreachable:
+- `DictationPipeline.bootstrap()` built `HotkeyManager()` with NO argument, so the
+  DEFAULT key was installed every launch. A saved preference was ignored even
+  after a relaunch.
+- `SettingsWindowBuilder` constructed `SettingsWindowController` without a
+  `SettingsActions`, so every hook the settings window exposes — `hotkeyChanged`,
+  `hotkeyRecordingChanged`, `showOverlayChanged`, `dictionaryChanged`, `openURL` —
+  was nil. The recorder wrote the preference and nothing acted on it.
+
+Fixed, and three related gaps closed while the wiring was open:
+- `applyHotkey(_:)` reinstalls the tap, because a live `CGEventTap` cannot be
+  retargeted. `shutdown()` publishes a release first, so a key held across the
+  swap cannot leave the microphone recording.
+- `setHotkeySuppressed(_:)` disarms the live hotkey while the recorder listens.
+  Without it, pressing keys at the recorder started a real dictation behind the
+  settings window.
+- `DictationCoordinator.dictionary` became a `var` with `setDictionary(_:)`. It was
+  a `let` fixed at construction, so a term added in Ajustes › Dicionário did
+  nothing until relaunch. The swap applies from the next dictation on, so an edit
+  mid-utterance cannot produce half-substituted text.
+- The pill overlay gained `setSuppressed(_:)` for FR-21's "Mostrar overlay".
+  Presentation-only: dictation keeps working, the user simply sees nothing.
+
+`Preferences` is now owned by the pipeline and shared with the settings window;
+two instances would each hold their own hotkey and silently disagree.
+
+### The pill kept advertising the old hotkey (2026-08-03)
+Reported from real use, right after the rebind started working: the "gravando"
+badge still read "⌥ direito". `PillOverlayController` took the hotkey once in its
+initialiser and was constructed as `PillOverlayController()` — the default — with
+no way to update it. The keycap is the app's instruction for HOW to dictate, so a
+stale one tells the user to press a key that no longer does anything.
+
+Fixed with `setHotkey(_:)`, called from `applyHotkey`, and the controller now
+starts from `preferences.hotkey`. A sweep for the same mistake found two more:
+`doctor` and the `run` verb both printed `Hotkey.rightOption` regardless of what
+the app was listening for. `runDoctor()` had to become `@MainActor` to read
+`Preferences`.
+
+Worth naming as a pattern, because it has now happened three times in three
+different forms: a value read ONCE at construction from a source that can change
+later. `HotkeyManager`, `DictationCoordinator.dictionary` and the pill's keycap
+were all built this way. When a preference exists, grep for every reader of its
+default before declaring the feature wired.

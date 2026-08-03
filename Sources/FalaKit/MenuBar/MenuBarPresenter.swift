@@ -32,12 +32,20 @@ public enum MenuBarLayout {
 /// both call it out, and it is the only element that must be visible in every
 /// single variant of this surface.
 public enum MenuBarStrings {
+  /// THE single place the product's name lives (DESIGN-HANDOFF.md §7: "swap via a
+  /// single brand-name constant"). Every user-facing string interpolates this.
+  ///
+  /// Two things deliberately do NOT follow it: the Application Support directory
+  /// (`~/Library/Application Support/Fala`) and the window frame autosave names.
+  /// Both address the user's existing data and window positions, and a rename
+  /// that moved them would orphan dictionaries, history and layout in
+  /// directories nothing looks at any more.
   public static let brandName = "Fala"
   public static let recentsTitle = "Recentes"
   public static let recentsEmpty = "Nenhuma ditada ainda."
   public static let openSettings = "Abrir Ajustes"
   public static let openHistory = "Abrir Histórico"
-  public static let quit = "Sair do Fala"
+  public static let quit = "Sair do \(brandName)"
   public static let copy = "Copiar"
   public static let privacyFooter = "100% no seu Mac · sem telemetria"
   public static let dictationToggleHelp = "Ativar ou desativar o ditado"

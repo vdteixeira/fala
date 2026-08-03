@@ -75,11 +75,11 @@ public enum PlatformRefusal: Error, Equatable, Sendable {
   public var title: String {
     switch self {
     case .intelMac:
-      return "O Fala não funciona em Macs com processador Intel."
+      return "O \(MenuBarStrings.brandName) não funciona em Macs com processador Intel."
     case .rosettaTranslation:
-      return "O Fala está sendo aberto pela Rosetta."
+      return "O \(MenuBarStrings.brandName) está sendo aberto pela Rosetta."
     case .operatingSystemTooOld(_, let required):
-      return "O Fala precisa do macOS \(required) ou mais recente."
+      return "O \(MenuBarStrings.brandName) precisa do macOS \(required) ou mais recente."
     }
   }
 
@@ -104,7 +104,7 @@ public enum PlatformRefusal: Error, Equatable, Sendable {
 
         Para corrigir: feche o Fala, clique nele com o botão direito no \
         Finder, escolha "Obter Informações" e desmarque "Abrir usando o \
-        Rosetta". Depois abra o Fala de novo.
+        Rosetta". Depois abra o \(MenuBarStrings.brandName) de novo.
         """
     case .operatingSystemTooOld(let found, let required):
       return """

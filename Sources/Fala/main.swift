@@ -40,6 +40,10 @@ func say(_ message: String) {
 ///
 /// Deliberately side-effect free: it never prompts for permissions, so it can be
 /// run repeatedly while diagnosing.
+///
+/// `@MainActor` because `Preferences` is: the hotkey it reports must be the one
+/// the app actually listens for.
+@MainActor
 func runDoctor() {
   let checker = SystemPermissionChecker()
 
@@ -52,7 +56,9 @@ func runDoctor() {
   }
 
   say("\nAtalho:")
-  let hotkey = Hotkey.rightOption
+  // The user's choice, not the default — `doctor` reporting a key the app does
+  // not listen for is worse than reporting nothing.
+  let hotkey = Preferences().hotkey
   say("  Tecla: \(hotkey.displayName)")
   if hotkey.conflictsWithSystemShortcut {
     say("  ⚠︎ Conflita com um atalho do sistema.")
@@ -216,7 +222,10 @@ func runDictation() async {
   do {
     let capture = try AudioCapture()
     let engine = ParakeetEngine()
-    let dictionary = try? JargonDictionary.loadDefault()
+    let dictionary =
+      (try? JargonDictionaryStore().load())?.dictionary
+      ?? (try? JargonDictionary.loadDefault())
+    let hotkeyChoice = Preferences().hotkey
 
     say("Carregando o modelo…")
     try await engine.prepare()
@@ -227,7 +236,7 @@ func runDictation() async {
       injector: ClipboardInjector(),
       dictionary: dictionary)
 
-    let hotkey = HotkeyManager()
+    let hotkey = HotkeyManager(hotkey: hotkeyChoice)
     try hotkey.start()
 
     // States, so the terminal shows what the pill overlay will show in Phase 2.
@@ -246,7 +255,7 @@ func runDictation() async {
       }
     }
 
-    say("Pronto. Segure \(Hotkey.rightOption.displayName), fale, e solte.")
+    say("Pronto. Segure \(hotkeyChoice.displayName), fale, e solte.")
     say("Ctrl+C para sair.\n")
 
     // A tap disabled by macOS mid-utterance is re-armed, but the key-up that

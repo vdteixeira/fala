@@ -34,7 +34,8 @@ fi
 mkdir -p "$APP/Contents/MacOS"
 if [ -f "$APP/Contents/MacOS/Fala" ] \
   && cmp -s "$BINARY" "$APP/Contents/MacOS/Fala" \
-  && [ -d "$APP/Contents/Resources/Fala_FalaKit.bundle" ]; then
+  && [ -d "$APP/Contents/Resources/Fala_FalaKit.bundle" ] \
+  && [ -f "$APP/Contents/Resources/Fala.icns" ]; then
   echo "Binary unchanged — keeping the existing signature (and your TCC grant)."
   echo "Built $APP"
   exit 0
@@ -55,6 +56,14 @@ else
   echo "WARNING: $BUNDLE_SRC not found — the app will crash on JargonDictionary." >&2
 fi
 
+# The app icon. Regenerate it with `swift scripts/make-icon.swift` — it is drawn
+# from the brand mark and the design tokens, so it cannot drift from the UI.
+if [ -f Resources/Fala.icns ]; then
+  cp Resources/Fala.icns "$APP/Contents/Resources/Fala.icns"
+else
+  echo "WARNING: Resources/Fala.icns missing — the app will use the generic icon." >&2
+fi
+
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -68,6 +77,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key>           <string>1</string>
   <key>LSMinimumSystemVersion</key>    <string>14.0</string>
+  <key>CFBundleIconFile</key>          <string>Fala</string>
   <!-- Menu-bar app: no Dock icon, no main window (SPEC.md FR-15). -->
   <key>LSUIElement</key>               <true/>
   <!-- Shown in the microphone permission prompt. pt-BR: the user reads this. -->

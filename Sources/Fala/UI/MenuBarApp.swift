@@ -43,6 +43,8 @@ enum FalaMenuBarApp {
 final class MenuBarAppDelegate: NSObject, NSApplicationDelegate {
   private var controller: MenuBarController?
   private var pipeline: DictationPipeline?
+  private var settings: SettingsWindowBuilder?
+  private var historyWindow: HistoryWindowController?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     // NFR-4, FIRST: before the microphone prompt and before any model download.
@@ -71,12 +73,21 @@ final class MenuBarAppDelegate: NSObject, NSApplicationDelegate {
       presenter: presenter, dictation: dictation, history: history)
     self.pipeline = pipeline
 
+    // T2.11 / T2.12. Both windows are built lazily on first open: constructing
+    // them here would do synchronous disk reads (model directory, dictionary
+    // files, volume capacity) on the main actor at launch, for windows most
+    // launches never open.
+    let settings = SettingsWindowBuilder(pipeline: pipeline)
+    let historyWindow = HistoryWindowController(model: HistoryWindowModel(history: history))
+    self.settings = settings
+    self.historyWindow = historyWindow
+
     var actions = MenuBarActions()
     actions.retryModelDownload = { [weak pipeline] in
       pipeline?.retryModelPreparation()
     }
-    // openSettings (T2.6+) and openHistory (T2.5) have no surface yet, so their
-    // rows stay visibly disabled instead of silently doing nothing.
+    actions.openSettings = { settings.show() }
+    actions.openHistory = { historyWindow.show() }
     self.controller = MenuBarController(presenter: presenter, actions: actions)
 
     Task { await presenter.refresh() }
@@ -110,6 +121,24 @@ final class DictationPipeline {
   private let history: DictationHistoryStore
   /// FR-18 device tracking, held for the process lifetime.
   private var devices: InputDeviceCenter?
+  /// Retained so the settings window's level meter can observe the SAME capture
+  /// object the pipeline dictates with. Building a second `AudioCapture` for the
+  /// meter would put two `AVAudioEngine`s on one microphone — the stacked-instance
+  /// failure recorded in docs/architecture.md.
+  private var capture: AudioCapture?
+  /// One instance, shared with the settings window: two `Preferences` objects
+  /// would each hold their own copy of the hotkey and silently disagree.
+  let preferences = Preferences()
+  /// Retained so a hotkey change can re-point a fresh tap at the same flow.
+  private var coordinator: DictationCoordinator?
+  private var hotkeyTask: Task<Void, Never>?
+  private var isHotkeySuppressed = false
+
+  /// Exposed for the settings window (T2.11). Both are nil until Accessibility is
+  /// granted and `bootstrap()` has run, which is exactly when the Áudio tab has
+  /// nothing to show anyway.
+  var deviceCenter: InputDeviceCenter? { devices }
+  var levelMonitor: (any AudioLevelMonitoring)? { capture }
   private var tasks: [Task<Void, Never>] = []
 
   init(
@@ -132,6 +161,57 @@ final class DictationPipeline {
     hotkey?.shutdown()
     hotkey = nil
     devices?.stop()
+  }
+
+  /// Reinstalls the event tap on a new key (Ajustes › Geral).
+  ///
+  /// A live `CGEventTap` cannot be retargeted, so the manager is torn down and
+  /// rebuilt. `shutdown()` publishes a release first, so a key held at the moment
+  /// of the swap cannot leave the microphone recording.
+  func applyHotkey(_ hotkey: Hotkey) {
+    guard let coordinator else { return }
+    hotkeyTask?.cancel()
+    self.hotkeyTask = nil
+    self.hotkey?.shutdown()
+    self.hotkey = nil
+
+    let manager = HotkeyManager(hotkey: hotkey)
+    do {
+      try manager.start()
+    } catch {
+      // Accessibility was revoked between launch and now; the popover's banner
+      // is the surface for that.
+      Task { @MainActor [weak self] in await self?.presenter.refresh() }
+      return
+    }
+    self.hotkey = manager
+    // The pill's keycap is the instruction for how to dictate; leaving it on the
+    // old key tells the user to press something that no longer works.
+    overlay?.setHotkey(hotkey)
+    let task = forwardingTask(from: manager, to: coordinator)
+    hotkeyTask = task
+    tasks.append(task)
+  }
+
+  /// Suppresses the live hotkey while the recorder in Ajustes is listening.
+  ///
+  /// Without this the currently-assigned key is still armed, so pressing it at
+  /// the recorder starts a real dictation behind the settings window.
+  func setHotkeySuppressed(_ suppressed: Bool) {
+    isHotkeySuppressed = suppressed
+  }
+
+  /// FR-21's "Mostrar overlay durante o ditado".
+  func setOverlayEnabled(_ enabled: Bool) {
+    overlay?.setSuppressed(!enabled)
+  }
+
+  /// Rebuilds the coordinator's dictionary after an edit in Ajustes › Dicionário,
+  /// so a term added there takes effect on the NEXT dictation rather than after a
+  /// relaunch.
+  func applyDictionary(_ dictionary: JargonDictionary) {
+    guard let coordinator else { return }
+    Task { await coordinator.setDictionary(dictionary) }
   }
 
   /// "Tentar novamente" on the model block.
@@ -161,6 +241,7 @@ final class DictationPipeline {
       self.devices = devices
 
       let capture = try AudioCapture(inputDevice: devices.captureSelection)
+      self.capture = capture
       let engine = ParakeetEngine()
       self.engine = engine
       // FR-9: the user's override file wins over the bundled default. Falls back
@@ -183,17 +264,24 @@ final class DictationPipeline {
       // FR-16: without this the six states have no visible surface at all — a
       // blocked injection (US-3) would fail silently, since the status icon
       // deliberately collapses success/failure to idle.
-      let overlay = PillOverlayController()
+      let overlay = PillOverlayController(hotkey: preferences.hotkey)
       overlay.attach(to: coordinator)
       self.overlay = overlay
 
       presenter.observe(await coordinator.states())
       prepareModel(engine, allowDownload: false)
 
-      let manager = HotkeyManager()
+      // FR-1: honour the user's choice. This read used to be missing entirely,
+      // so `HotkeyManager()` always installed the DEFAULT key and changing the
+      // hotkey in Ajustes had no effect — not on the running app, and not even
+      // after a relaunch.
+      let manager = HotkeyManager(hotkey: preferences.hotkey)
       try manager.start()
       hotkey = manager
-      tasks.append(forwardingTask(from: manager, to: coordinator))
+      self.coordinator = coordinator
+      let forwarding = forwardingTask(from: manager, to: coordinator)
+      hotkeyTask = forwarding
+      tasks.append(forwarding)
     } catch {
       // The two constructors that can fail here — the audio engine and the event
       // tap — both fail for permission-shaped reasons, and a refresh is what
@@ -210,6 +298,8 @@ final class DictationPipeline {
     Task { @MainActor [weak self] in
       for await phase in manager.phases {
         guard let self else { return }
+        // Suppressed while the hotkey recorder is listening.
+        guard !self.isHotkeySuppressed else { continue }
         guard
           let admitted = self.gate.admit(phase, dictationEnabled: self.dictation.isEnabled)
         else { continue }

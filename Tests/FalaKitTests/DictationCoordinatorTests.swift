@@ -272,4 +272,31 @@ struct DictationCoordinatorTests {
     #expect(captured.count == 1)
     #expect((captured.first ?? 0) == 1.5)
   }
+
+  /// Editing the dictionary in Ajustes must reach the NEXT dictation. It used to
+  /// be a `let` fixed at construction, so a term added in the settings window did
+  /// nothing until the app was relaunched.
+  @Test("A dictionary swap applies to the next dictation")
+  func dictionarySwapAppliesToNextDictation() async throws {
+    let engine = MockTranscriptionEngine(text: "crie uma brand nova")
+    let injector = FakeInjector()
+    let coordinator = makeCoordinator(engine: engine, injector: injector)
+
+    await coordinator.handle(.pressed)
+    await coordinator.handle(.released)
+    #expect(await injector.injected == ["crie uma brand nova"])
+
+    let dictionary = try JargonDictionary(entries: [
+      JargonEntry(from: "brand", to: "branch", safety: .safe)
+    ])
+    await coordinator.setDictionary(dictionary)
+
+    await coordinator.handle(.pressed)
+    await coordinator.handle(.released)
+    #expect(await injector.injected.last == "crie uma branch nova")
+
+    // The bias terms must follow the swap too, or the engine keeps being told
+    // about the old vocabulary.
+    #expect(await engine.receivedBiasTerms.last?.contains("branch") == true)
+  }
 }

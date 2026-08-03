@@ -316,4 +316,22 @@ import Testing
     #expect(PillMetrics.waveformReducedScale > PillMetrics.waveformMinScale)
     #expect(PillMetrics.waveformReducedScale <= 1)
   }
+
+  /// The pill's keycap is the instruction for HOW to dictate. It was fixed at
+  /// construction, so after rebinding the hotkey the overlay kept telling the
+  /// user to press a key that no longer did anything — reported from real use.
+  @Test("The resting hint follows the bound hotkey")
+  func restingHintFollowsTheHotkey() {
+    for hotkey in Hotkey.allCases {
+      // `.recording` is the state that carries the keycap — and the one the
+      // user was looking at when they reported the stale label.
+      let input = PillInput(state: .recording, audioRouteDegraded: false, hotkey: hotkey)
+      let content = PillOverlayContent.initial(for: input)
+      guard case .pill(let presentation) = content else {
+        Issue.record("expected a pill while recording")
+        continue
+      }
+      #expect(presentation.hotkeyHint?.contains(hotkey.displayName) == true)
+    }
+  }
 }

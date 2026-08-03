@@ -57,6 +57,14 @@ else
   exit 1
 fi
 
+# The app icon. Regenerate it with `swift scripts/make-icon.swift` — it is drawn
+# from the brand mark and the design tokens, so it cannot drift from the UI.
+if [ -f Resources/Fala.icns ]; then
+  cp Resources/Fala.icns "$APP/Contents/Resources/Fala.icns"
+else
+  echo "WARNING: Resources/Fala.icns missing — the app will use the generic icon." >&2
+fi
+
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -70,6 +78,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key>           <string>$VERSION</string>
   <key>LSMinimumSystemVersion</key>    <string>14.0</string>
+  <key>CFBundleIconFile</key>          <string>Fala</string>
   <key>LSUIElement</key>               <true/>
   <key>NSMicrophoneUsageDescription</key>
   <string>O Fala usa o microfone para transcrever sua voz localmente, no seu Mac.</string>
@@ -111,6 +120,15 @@ say "Assinatura verificada"
 codesign -dv "$APP" 2>&1 | grep -E "Identifier|Signature|TeamIdentifier" || true
 
 # ---------------------------------------------------------------- dmg
+
+# Detach any earlier mount of this volume FIRST. A leftover mount keeps
+# /Volumes/Fala, so the new image gets mounted at "/Volumes/Fala 1" — and any
+# check run against the old path silently inspects the PREVIOUS build. That
+# nearly shipped a report saying the icon was missing when it was not.
+for volume in /Volumes/"$APP_NAME"*; do
+  [ -d "$volume" ] || continue
+  hdiutil detach "$volume" -force -quiet 2>/dev/null || true
+done
 
 say "Criando $DMG"
 rm -rf "$STAGE"
@@ -157,3 +175,15 @@ fi
 echo
 echo "  Verifique o que o destinatário vai ver:"
 echo "    spctl --assess --type execute -vv $APP"
+echo
+echo "  Conteúdo do .dmg:"
+MOUNT="$(hdiutil attach "$DMG" -nobrowse | grep -o '/Volumes/.*' | tail -1)"
+if [ -n "$MOUNT" ]; then
+  ls "$MOUNT" | sed 's/^/    /'
+  if [ -f "$MOUNT/$APP_NAME.app/Contents/Resources/$APP_NAME.icns" ]; then
+    echo "    (ícone presente)"
+  else
+    echo "    ⚠︎ SEM ícone — rode: swift scripts/make-icon.swift" >&2
+  fi
+  hdiutil detach "$MOUNT" -quiet || true
+fi

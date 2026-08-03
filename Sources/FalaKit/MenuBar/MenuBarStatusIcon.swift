@@ -35,10 +35,10 @@ public enum MenuBarIconVariant: String, Sendable, CaseIterable {
   /// user, so this is functional, not decoration.
   public var accessibilityLabel: String {
     switch self {
-    case .idle: return "Fala — pronto para ditar"
-    case .recording: return "Fala — gravando"
-    case .working: return "Fala — transcrevendo"
-    case .disabled: return "Fala — ditado desativado"
+    case .idle: return "\(MenuBarStrings.brandName) — pronto para ditar"
+    case .recording: return "\(MenuBarStrings.brandName) — gravando"
+    case .working: return "\(MenuBarStrings.brandName) — transcrevendo"
+    case .disabled: return "\(MenuBarStrings.brandName) — ditado desativado"
     }
   }
 

@@ -156,24 +156,49 @@ Depends on Phase 1 + DESIGN.md tokens available in `/design`.
       Alacritty, kitty are unprotected against typed newlines running shell
       commands), and the composite's serialisation has no real test.
       **Never run by a human.**
-- [ ] T2.11 **Settings window** — MISSING FROM THIS PLAN UNTIL NOW. Mockup exists
-      (`design/mockups/settings-window.dc.html`) with five tabs: Geral (hotkey
-      recorder), Áudio (device picker + HFP row + level meter), Dicionário (jargon
-      list, add/remove, import/export), Modelo, Privacidade. Without it three
-      shipped capabilities have no user surface: the hotkey is configurable only in
-      code (FR-1), the device choice is persisted but has no picker (T2.6/FR-18),
-      and the jargon file is editable only by hand (FR-9).
-- [ ] T2.12 **History window** — MISSING FROM THIS PLAN UNTIL NOW. Specified in
-      DESIGN-HANDOFF.md §1 as "Surface 4 — pending render": search, day grouping,
-      per-row copy / re-inject / delete, "Apagar tudo". The store, the undo and the
-      per-entry delete already exist (T2.5); only the window is absent. NOTE: the
-      mockup itself was never produced, so this needs a design pass first.
-- [ ] T2.9 LaunchAgent autostart (opt-in) via CLI `install --launch-at-login`.
+- [x] T2.10 PT-BR user docs: `docs/pt-BR/{instalacao,permissoes,uso}.md`.
+- [x] NFR-4 Apple Silicon / Rosetta / macOS-floor refusal (`HostPlatform`), wired
+      into the CLI and the menu-bar startup, pt-BR explanation, 25 tests. Measured
+      here: `hw.optional.arm64` reports 1 EVEN UNDER ROSETTA, so an
+      architecture-only check (and any `#if arch(arm64)`) waves a translated
+      process through — `sysctl.proc_translated` is the only signal that separates
+      them.
+- [~] T2.11 **Settings window** — built, five tabs, wired to the menu. 77 tests.
+      All five missing capabilities were built first: input level meter (a real
+      change to the capture actor, not a view), start-at-login, showOverlay +
+      hotkey preferences, dictionary export, free disk + cancellable download.
+      A review found and I fixed **DATA LOSS**: a user dictionary file that failed
+      to parse left the in-memory override EMPTY, and the next edit wrote that
+      emptiness atomically over the file — user rules gone, no backup. Every
+      mutation now refuses while the file is unreadable.
+      **Still open** (see docs/architecture.md): the hotkey recorder is not
+      cancelled on window close, key repeat leaks to the focused control while
+      recording, switching tabs discards the dictionary Undo, and an unplugged
+      saved device is drawn as if it were available.
+      **NEVER RUN — no human has seen this window.**
+- [~] T2.12 **History window** — built from DESIGN-HANDOFF §1's prose (no mockup
+      exists). Search (accent- and case-insensitive), day grouping, per-row copy /
+      re-inject / delete, "Apagar tudo". 71 tests. Wired to the menu.
+      A review found and I fixed a **PRIVACY** defect: closing the window while a
+      load was in flight let the continuation repopulate the model afterwards, so
+      every transcript and its folded search copy stayed resident for the process
+      lifetime — defeating the one guarantee the type advertises. Both the
+      not-yet-started and the mid-flight orderings are now pinned by tests
+      verified against mutation. Also fixed: a second row action during the first
+      was silently dropped while the user was told the first had succeeded.
+      **Still open:** ⌘W and ⌘V do nothing (no File/Edit menu items, so AppKit
+      never routes them), the search field steals first responder from the list,
+      and `reinjector: nil` does not actually disable the re-inject button.
+      **NEVER RUN — no human has seen this window.**
+- [x] T2.9 Start at login via `SMAppService` (not a hand-written LaunchAgent plist:
+      supported API, survives app moves, visible in System Settings › Login Items).
+      Handles the requires-approval state honestly. 47 tests.
 **GATE 2:** UI matches mockups (visual diff), permissions handled gracefully, docs in
 PT-BR complete. Human OK required.
 Cannot close today for three independent reasons: two of the four designed surfaces
 do not exist (T2.11, T2.12); nothing built in Phase 2 has EVER been run by a human,
-so no visual diff exists; and `docs/pt-BR/` is empty (T2.10).
+so no visual diff exists; and T2.11 depends on five capabilities that have no
+implementation at all (see its entry). T2.10 is done.
 
 ## Phase 3 — Optional / distribution
 Depends on Phase 2.
@@ -190,10 +215,4 @@ Depends on Phase 2.
       ad-hoc and says so. `spctl --assess` → **rejected**, which is exactly what a
       recipient will hit. DoD ("Gatekeeper opens the notarized app on a clean
       machine") is NOT met and cannot be until the certificate exists.
-- [x] T2.10 PT-BR user docs: `docs/pt-BR/{instalacao,permissoes,uso}.md`.
-- [x] NFR-4 Apple Silicon / Rosetta / macOS-floor refusal (`HostPlatform`), wired
-      into both the CLI and the menu-bar startup, with a pt-BR explanation. 25 tests.
-      Measured on this machine: `hw.optional.arm64` reports 1 EVEN UNDER ROSETTA, so
-      an architecture-only check (and any `#if arch(arm64)`) waves a translated
-      process through — `sysctl.proc_translated` is the only discriminating signal.
 **GATE 3:** signed, notarized, distributable. Human OK required.

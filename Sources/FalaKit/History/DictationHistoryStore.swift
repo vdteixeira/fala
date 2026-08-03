@@ -48,6 +48,8 @@ public actor DictationHistoryStore:
     let base =
       FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
       ?? fallback
+    // Deliberately NOT MenuBarStrings.brandName — see JargonDictionaryStore:
+    // a rename must not move the user's data out from under them.
     return base.appendingPathComponent("Fala", isDirectory: true)
   }
 
