@@ -129,6 +129,49 @@ import Testing
     #expect(override.entries.first?.safety == .safe)
   }
 
+  /// The defect: `entries` and `substitutions` were an if/else-if, so the flat
+  /// map was dropped in silence whenever `entries` was present — and the SEEDED
+  /// TEMPLATE always writes `"entries": []`. A user who followed the documented
+  /// flat-map path in the file Fala itself created got nothing, and no warning.
+  @Test("'substitutions' still applies next to the empty 'entries' the template seeds")
+  func substitutionsSurviveAnEmptyEntriesArray() throws {
+    let json = #"{ "entries": [], "substitutions": { "becape": "backup" } }"#
+    let override = try JargonOverride.decode(json: Data(json.utf8))
+    #expect(override.entries.map(\.from) == ["becape"])
+    #expect(!override.isEmpty)
+  }
+
+  @Test("Both rule shapes in one file are read together, not one instead of the other")
+  func bothRuleShapesAreRead() throws {
+    let json = """
+      {
+        "entries": [ { "from": "esse queuel", "to": "SQL" } ],
+        "substitutions": { "becape": "backup" }
+      }
+      """
+    let override = try JargonOverride.decode(json: Data(json.utf8))
+    #expect(Set(override.entries.map(\.from)) == ["becape", "esse queuel"])
+  }
+
+  /// Order matters: `merged(over:)` lets the LAST entry with a given identity
+  /// win, and only the tiered shape can carry `safety` and context, so it has to
+  /// be the one that survives a `from` declared in both.
+  @Test("A 'from' declared in both shapes resolves to the tiered entry")
+  func tieredEntryWinsOverTheFlatMap() throws {
+    let json = """
+      {
+        "entries": [ { "from": "becape", "to": "Backup", "safety": "contextual",
+                       "contextBefore": ["rodar"] } ],
+        "substitutions": { "becape": "backup" }
+      }
+      """
+    let override = try JargonOverride.decode(json: Data(json.utf8))
+    let merged = override.merged(over: [])
+    #expect(merged.entries.count == 1)
+    #expect(merged.entries.first?.to == "Backup")
+    #expect(merged.entries.first?.safety == .contextual)
+  }
+
   /// Emptying the file is a legitimate way to switch your customisations off.
   @Test("A whitespace-only file decodes as 'no overrides'")
   func blankFileDecodesAsEmpty() throws {
@@ -280,6 +323,32 @@ import Testing
     #expect(status.dictionary.apply(to: "no posterg") == "no Postgres")
   }
 
+  /// End-to-end through the real seeded file: take the template Fala writes on
+  /// first run — which always contains `"entries": []` — add the documented flat
+  /// map to it, and the terms must actually fire. Before the fix they were
+  /// dropped without a word.
+  @Test("A flat 'substitutions' map added to the SEEDED template takes effect")
+  func substitutionsWorkInASeededFile() throws {
+    let directory = Self.temporaryDirectory()
+    defer { Self.remove(directory) }
+    let store = JargonDictionaryStore(directory: directory)
+    #expect(try store.load().userFile == .created)
+
+    // The seeded template verbatim, plus the one key the docs tell users to add.
+    let seeded = try String(contentsOf: store.fileURL, encoding: .utf8)
+    let added = "\"entries\": [], \"substitutions\": { \"cai cede\": \"CI/CD\" },"
+    let edited = seeded.replacingOccurrences(of: "\"entries\": [],", with: added)
+    #expect(edited != seeded)
+    try Data(edited.utf8).write(to: store.fileURL)
+
+    let status = try store.load()
+    #expect(status.userFile == .applied)
+    #expect(status.isUsingUserFile)
+    #expect(status.merge?.added == 1)
+    #expect(status.dictionary.apply(to: "roda o cai cede") == "roda o CI/CD")
+    #expect(status.warnings.isEmpty)
+  }
+
   @Test("A user entry with a bundled 'from' wins over the bundled rule")
   func userEntryWinsOverBundled() throws {
     let store = try Self.store(
@@ -391,9 +460,10 @@ import Testing
         == .ignored(
           .invalidEntry(
             from: "com pose",
-            reason: "safety 'contextual' requires contextBefore and/or contextAfter")))
+            reason: "safety 'contextual' exige contextBefore e/ou contextAfter")))
     #expect(status.warnings[0].contains("com pose"))
     #expect(status.activeEntryCount > 0)
+    Self.expectPortuguese(status.warnings[0])
   }
 
   @Test("An unreadable file degrades instead of throwing")
@@ -441,7 +511,149 @@ import Testing
         .contains("'brand'"))
   }
 
+  /// What `doctor` prints for the file itself, as opposed to the rule count.
+  @Test("The file summary names the file and what happened to it")
+  func fileSummaryNamesTheFileInForce() throws {
+    let store = try Self.store(
+      containing: #"{ "entries": [ { "from": "esse queuel", "to": "SQL" } ] }"#)
+    defer { Self.remove(store.directory) }
+
+    let applied = try store.load()
+    #expect(applied.fileSummary.contains("it-jargon.json"))
+    #expect(applied.fileSummary.contains("em uso"))
+    #expect(applied.isHealthy)
+
+    let seeded = JargonDictionaryStore(directory: Self.temporaryDirectory())
+    defer { Self.remove(seeded.directory) }
+    #expect(try seeded.load().fileSummary.contains("criado agora"))
+
+    let untouched = JargonDictionaryStore(directory: Self.temporaryDirectory())
+    defer { Self.remove(untouched.directory) }
+    #expect(try untouched.load(seedIfMissing: false).fileSummary.contains("ainda não existe"))
+  }
+
+  // MARK: - pt-BR decoder messages
+  //
+  // The previous test for this fed `JargonDictionaryError` values built by hand,
+  // so it asserted the pt-BR frame around a `reason` the test itself wrote. Every
+  // reason a REAL file produces came from `JSONDecoder`, in English, and was
+  // interpolated verbatim: "Cannot initialize JargonSafety from invalid String
+  // value seguro", "The given data was not valid JSON." These go through the
+  // store, from bytes on disk, so the message under test is the one the user
+  // actually reads.
+
+  @Test("A file that is not JSON says so in pt-BR, with no decoder English")
+  func notJSONIsExplainedInPortuguese() throws {
+    let status = try Self.warning(for: "{ isso não é JSON")
+    #expect(status.contains("não é JSON válido"))
+    #expect(status.contains("vírgulas"))
+    Self.expectPortuguese(status)
+  }
+
+  /// The message the defect names: `JargonSafety` is a Swift type the user has
+  /// never heard of, and the three valid spellings are not guessable.
+  @Test("An invalid 'safety' quotes what the user wrote and lists the valid values")
+  func invalidSafetyIsExplainedInPortuguese() throws {
+    let warning = try Self.warning(
+      for: #"{ "entries": [ { "from": "posterg", "to": "Postgres", "safety": "seguro" } ] }"#)
+    #expect(warning.contains("'safety'"))
+    #expect(warning.contains("'seguro'"))
+    #expect(warning.contains("'safe'"))
+    #expect(warning.contains("'contextual'"))
+    #expect(warning.contains("'risky'"))
+    Self.expectPortuguese(warning)
+  }
+
+  /// The second half of the defect: an entry-level failure discarded the whole
+  /// file while naming neither the entry nor its position in it.
+  @Test("A missing key names the entry by ordinal AND by its own 'from'")
+  func missingKeyNamesTheOffendingEntry() throws {
+    let warning = try Self.warning(
+      for: """
+        {
+          "entries": [
+            { "from": "posterg", "to": "Postgres" },
+            { "from": "esse queuel" }
+          ]
+        }
+        """)
+    #expect(warning.contains("nº 2"))
+    #expect(warning.contains("esse queuel"))
+    #expect(warning.contains("falta a chave 'to'"))
+    Self.expectPortuguese(warning)
+  }
+
+  @Test("A field of the wrong type names the field and the type it should be")
+  func typeMismatchIsExplainedInPortuguese() throws {
+    let warning = try Self.warning(
+      for: #"{ "entries": [ { "from": "posterg", "to": 42 } ] }"#)
+    #expect(warning.contains("nº 1"))
+    #expect(warning.contains("'to' deveria ser texto"))
+    Self.expectPortuguese(warning)
+  }
+
+  @Test("A top-level key of the wrong type is named without inventing an entry")
+  func topLevelTypeMismatchHasNoEntryOrdinal() throws {
+    let warning = try Self.warning(for: #"{ "disable": "brand" }"#)
+    #expect(warning.contains("'disable' deveria ser uma lista"))
+    #expect(!warning.contains("entrada nº"))
+    Self.expectPortuguese(warning)
+  }
+
+  /// A misspelled key is the one failure a lenient decoder makes undiagnosable,
+  /// so the rejection has to be readable too.
+  @Test("An unrecognised top-level key is rejected in pt-BR, listing what is valid")
+  func unrecognisedKeyIsExplainedInPortuguese() throws {
+    let warning = try Self.warning(for: #"{ "entrys": [] }"#)
+    #expect(warning.contains("'entries'"))
+    #expect(warning.contains("'substitutions'"))
+    #expect(warning.contains("'disable'"))
+    Self.expectPortuguese(warning)
+  }
+
+  /// A pasted paragraph in `from` must not become the warning.
+  @Test("A quoted value from the user's file is clipped")
+  func quotedValuesAreClipped() throws {
+    let long = String(repeating: "x", count: 200)
+    let warning = try Self.warning(for: #"{ "entries": [ { "from": "\#(long)" } ] }"#)
+    #expect(warning.contains("…"))
+    #expect(!warning.contains(long))
+    #expect(warning.contains(String(repeating: "x", count: 40)))
+  }
+
   // MARK: - Helpers
+
+  /// English the decoder emits that must never reach the user. `#expect` on
+  /// absence, because the defect was invisible to every assertion that only
+  /// checked for the Portuguese half.
+  private static let englishTells = [
+    "Cannot initialize", "The given data", "Expected to decode", "No value associated",
+    "but found", "missing key", "invalid String value", "unreadable JSON", "expected",
+  ]
+
+  private static func expectPortuguese(
+    _ text: String,
+    sourceLocation: SourceLocation = #_sourceLocation
+  ) {
+    for tell in englishTells where text.contains(tell) {
+      Issue.record(
+        "English decoder text leaked: '\(tell)' in \(text)", sourceLocation: sourceLocation)
+    }
+  }
+
+  /// The single warning a broken file produces, read through the real store so
+  /// the string under test is the one `doctor` prints.
+  private static func warning(
+    for json: String,
+    sourceLocation: SourceLocation = #_sourceLocation
+  ) throws -> String {
+    let store = try Self.store(containing: json)
+    defer { Self.remove(store.directory) }
+    let status = try store.load()
+    #expect(!status.isHealthy, sourceLocation: sourceLocation)
+    #expect(status.activeEntryCount > 0, "the bundled default must survive")
+    return status.warnings.first ?? ""
+  }
 
   private static func temporaryDirectory() -> URL {
     FileManager.default.temporaryDirectory

@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import SwiftUI
 import Testing
 
 @testable import FalaKit
@@ -418,6 +419,166 @@ private func makeStatus(present: Bool, bytes: Int64? = 1_100_000_000) -> ModelSt
   }
 }
 
+// MARK: - Commands, shortcuts and the rows that advertise them
+
+/// The Phase 2 review found the popover printing "⌘ Q" and "⌘ ," while the app
+/// bound neither key: the hints were literals in the view and no `NSMenu`
+/// existed. Both now come from `MenuBarCommand`, and these tests are what stops
+/// them drifting apart again. What CANNOT be tested here is the `NSMenu` itself
+/// (AppKit, no window server) — see the notes in `FalaMainMenu`.
+@Suite struct MenuBarCommandTests {
+
+  @Test("the two shortcuts the popover advertises are ⌘Q and ⌘,")
+  func shortcutsAreBound() {
+    #expect(MenuBarCommand.quit.shortcut == MenuBarShortcut("q"))
+    #expect(MenuBarCommand.openSettings.shortcut == MenuBarShortcut(","))
+    // Histórico has none in the mockup; inventing one would add a third
+    // shortcut to remember.
+    #expect(MenuBarCommand.openHistory.shortcut == nil)
+  }
+
+  @Test("the hint the row prints is derived from the key the app binds")
+  func hintsCannotDriftFromTheBinding() {
+    #expect(MenuBarStrings.quitShortcut == MenuBarCommand.quit.shortcut?.display)
+    #expect(
+      MenuBarStrings.openSettingsShortcut == MenuBarCommand.openSettings.shortcut?.display)
+    #expect(MenuBarStrings.quitShortcut == "⌘ Q")
+    #expect(MenuBarStrings.openSettingsShortcut == "⌘ ,")
+  }
+
+  @Test("the key equivalent AppKit gets is lowercase, the printed one is not")
+  func keyEquivalentIsLowercase() {
+    #expect(MenuBarShortcut("Q").keyEquivalent == "q")
+    #expect(MenuBarShortcut("Q").display == "⌘ Q")
+    #expect(MenuBarShortcut(",").keyEquivalent == ",")
+    #expect(MenuBarShortcut(",").display == "⌘ ,")
+  }
+
+  /// `NSMenuItem.tag` defaults to 0, so no command may use it: an item nobody
+  /// configured must never resolve to a command that quits the app.
+  @Test("menu tags round-trip and none of them is the default tag")
+  func menuTagsRoundTrip() {
+    for command in MenuBarCommand.allCases {
+      #expect(command.menuTag != 0)
+      #expect(MenuBarCommand.command(forMenuTag: command.menuTag) == command)
+    }
+    let tags = MenuBarCommand.allCases.map(\.menuTag)
+    #expect(Set(tags).count == tags.count)
+    #expect(MenuBarCommand.command(forMenuTag: 0) == nil)
+  }
+
+  @Test("the rows render in the mockup's order, with Sair last")
+  func renderOrderMatchesTheMockup() {
+    #expect(MenuBarCommand.allCases == [.openSettings, .openHistory, .quit])
+    #expect(
+      MenuBarCommand.allCases.map(\.title)
+        == ["Abrir Ajustes", "Abrir Histórico", "Sair do Fala"])
+  }
+
+  @Test("each command carries the handoff's SF Symbol")
+  func symbolsComeFromTheIconMap() {
+    #expect(MenuBarCommand.openSettings.symbol == FalaSymbol.settings)
+    #expect(MenuBarCommand.openHistory.symbol == FalaSymbol.history)
+    #expect(MenuBarCommand.quit.symbol == FalaSymbol.power)
+  }
+}
+
+@Suite struct MenuBarQuickActionTests {
+
+  /// The review's finding: two of the three rows ship with no handler, and a
+  /// dead row must not advertise a key that does nothing.
+  @Test("a row with no handler is disabled and advertises no shortcut")
+  func disabledRowAdvertisesNothing() {
+    let row = MenuBarQuickAction(command: .openSettings, isEnabled: false)
+    #expect(!row.isEnabled)
+    #expect(row.shortcutHint == nil)
+    #expect(row.accessibilityHint == MenuBarStrings.unavailableAction)
+    #expect(row.accessibilityHint == "Ainda não disponível.")
+  }
+
+  @Test("a row with a handler shows its shortcut and no 'unavailable' hint")
+  func enabledRowAdvertisesItsKey() {
+    let row = MenuBarQuickAction(command: .quit, isEnabled: true)
+    #expect(row.shortcutHint == "⌘ Q")
+    #expect(row.accessibilityHint == nil)
+  }
+
+  @Test("a command with no shortcut shows no hint even when it is live")
+  func historyNeverShowsAHint() {
+    #expect(MenuBarQuickAction(command: .openHistory, isEnabled: true).shortcutHint == nil)
+  }
+
+  /// Exactly the shipping wiring: only `quit` is resolved, Ajustes (T2.6) and
+  /// Histórico (T2.5) have no surface yet.
+  @Test("the shipped popover has one live row and two visibly dead ones")
+  func shippedWiringIsHonest() {
+    let rows = MenuBarQuickAction.all { $0 == .quit }
+    #expect(rows.map(\.command) == MenuBarCommand.allCases)
+    #expect(rows.map(\.isEnabled) == [false, false, true])
+    #expect(rows.compactMap(\.shortcutHint) == ["⌘ Q"])
+  }
+}
+
+@Suite struct MenuBarRowStyleTests {
+
+  /// A disabled row must LOOK disabled. The view used to paint `text.primary`
+  /// on the label unconditionally, which overrode the dimming
+  /// `.buttonStyle(.plain)` derives from `isEnabled`.
+  @Test("a disabled row is drawn in different colors from a live one")
+  func disabledRowIsDimmed() {
+    for theme in [Theme.light, Theme.dark] {
+      let live = theme.quickActionStyle(isEnabled: true)
+      let dead = theme.quickActionStyle(isEnabled: false)
+      #expect(live != dead)
+      #expect(live.title != dead.title)
+      #expect(live.symbol != dead.symbol)
+      #expect(dead.title == theme.color.text.tertiary)
+      #expect(dead.symbol == theme.color.text.tertiary)
+      #expect(live.title == theme.color.text.primary)
+      #expect(live.symbol == theme.color.text.secondary)
+    }
+  }
+}
+
+@Suite struct MenuBarSurfaceTests {
+
+  /// HIG: the fallback for a material must be OPAQUE — that is what the setting
+  /// asks for. `bg.vibrancy` is the flat stand-in for the material itself and
+  /// keeps its alpha, so it is the one token that cannot be this fallback.
+  @Test("the Reduce-Transparency fallback is an opaque token, in both appearances")
+  func fallbackIsOpaque() {
+    for appearance in DesignSystem.Appearance.allCases {
+      let palette = DesignSystem.palette(for: appearance)
+      #expect(palette.bg.canvas.opacity == 1)
+      #expect(Theme(appearance: appearance).reduceTransparencyFill == palette.bg.canvas.color)
+      // The token that used to be painted here, pinned so the regression is
+      // visible if anyone puts it back.
+      #expect(palette.bg.vibrancy.opacity < 1)
+    }
+  }
+}
+
+@Suite struct MenuBarTypeTests {
+
+  /// The mockup overrides the type scale in two spots. Naming the overrides
+  /// keeps the raw numbers out of the views AND keeps them tied to the scale.
+  @Test("the mockup's weight overrides derive from the type tokens")
+  func typeOverridesDeriveFromTheScale() {
+    #expect(MenuBarType.brandName.size == DesignSystem.TypeScale.headline.size)
+    #expect(MenuBarType.brandName.fontWeight == .bold)
+    #expect(MenuBarType.brandName.family == .display)
+    #expect(MenuBarType.blockTitle.size == DesignSystem.TypeScale.caption.size)
+    #expect(MenuBarType.blockTitle.fontWeight == .semibold)
+  }
+
+  @Test("the ⌘ hint is the micro token in the mono family")
+  func shortcutHintIsMonospaced() {
+    #expect(MenuBarType.shortcutHint.size == DesignSystem.TypeScale.micro.size)
+    #expect(MenuBarType.shortcutHint.weight == DesignSystem.TypeScale.micro.weight)
+    #expect(MenuBarType.shortcutHint.family == .mono)
+  }
+}
+
 // MARK: - Banner and model block
 
 @Suite struct MenuBarBlockTests {
@@ -532,6 +693,64 @@ private func makeStatus(present: Bool, bytes: Int64? = 1_100_000_000) -> ModelSt
   func missingSizeLeavesNoDanglingWord() {
     let block = ModelBlock.onDisk(makeStatus(present: true, bytes: nil))
     #expect(block.detail.isEmpty)
+  }
+}
+
+// MARK: - The last failure
+
+/// Before this, a failed dictation had NO surface in the popover: the status
+/// icon collapses `.failure` to idle and the pill is gone after 2.5s. A user
+/// looking at their editor when the injection was blocked (US-3) never learned
+/// why nothing appeared.
+@Suite struct DictationFailureNoticeTests {
+  private let now = Date(timeIntervalSince1970: 1_000_000)
+
+  @Test("only a failure produces a notice")
+  func onlyFailuresProduceANotice() {
+    #expect(DictationFailureNotice(state: .idle, at: now) == nil)
+    #expect(DictationFailureNotice(state: .recording, at: now) == nil)
+    #expect(DictationFailureNotice(state: .success, at: now) == nil)
+    #expect(DictationFailureNotice(state: .transcribing(capturedSeconds: 2), at: now) == nil)
+  }
+
+  /// The whole point: the coordinator's pt-BR message reaches the user.
+  @Test("the coordinator's message survives verbatim")
+  func messageIsPreserved() {
+    let blocked = DictationCoordinator.message(for: .secureInputActive)
+    let notice = DictationFailureNotice(state: .failure(message: blocked), at: now)
+    #expect(notice?.message == "Campo protegido — injeção bloqueada.")
+    #expect(notice?.message == blocked)
+    #expect(notice?.stateKind == .error)
+  }
+
+  @Test("a failure with no message still says something")
+  func emptyMessageFallsBackToPortuguese() {
+    let empty = DictationFailureNotice(state: .failure(message: ""), at: now)
+    #expect(empty?.message == "A ditada falhou.")
+    let blank = DictationFailureNotice(state: .failure(message: "   \n"), at: now)
+    #expect(blank?.message == DictationFailureNotice.genericMessage)
+  }
+
+  /// The mockup draws a secure-field block with the padlock, not the generic
+  /// triangle — the same cause map the pill uses, reused rather than retyped.
+  @Test("a secure-field block is drawn with the padlock")
+  func secureFieldUsesTheLockGlyph() {
+    let blocked = DictationCoordinator.message(for: .secureInputActive)
+    #expect(
+      DictationFailureNotice(state: .failure(message: blocked), at: now)?.symbol
+        == FalaSymbol.secureField)
+    #expect(
+      DictationFailureNotice(state: .failure(message: "A gravação falhou."), at: now)?.symbol
+        == FalaSymbol.error)
+  }
+
+  @Test("the notice ages in pt-BR and reads as one line to VoiceOver")
+  func metaAndAccessibility() {
+    let notice = DictationFailureNotice(
+      state: .failure(message: "Nada foi capturado."), at: now.addingTimeInterval(-120))
+    #expect(notice?.metaLine(relativeTo: now) == "há 2 min")
+    #expect(notice?.accessibilityLabel(relativeTo: now) == "Nada foi capturado. · há 2 min")
+    #expect(notice?.dismissTitle == "Dispensar")
   }
 }
 
@@ -653,6 +872,112 @@ private func makeStatus(present: Bool, bytes: Int64? = 1_100_000_000) -> ModelSt
     let presenter = makePresenter()
     await presenter.refresh()
     #expect(presenter.now == Date(timeIntervalSince1970: 1_000_000))
+  }
+
+  /// A limit of 0 used to clamp to 0: history was asked for nothing, so the
+  /// popover rendered "Nenhuma ditada ainda." forever with a populated history
+  /// right behind it.
+  @Test("a zero limit still asks for one row instead of rendering empty forever")
+  func zeroLimitIsClampedUp() async {
+    let provider = RecordingRecents()
+    let presenter = MenuBarPresenter(
+      dictation: DictationSwitch(store: MockDictationStore(stored: true)),
+      permissions: MockPermissionChecker(granted: []),
+      modelStatus: { makeStatus(present: false) },
+      history: provider,
+      recentsLimit: 0)
+    await presenter.refresh()
+    let asked = await provider.lastLimit
+    #expect(asked == MenuBarLayout.minRecents)
+    #expect(asked == 1)
+  }
+
+  @Test("a negative limit is clamped the same way")
+  func negativeLimitIsClampedUp() async {
+    let entries = [
+      RecentTranscription(text: "primeira", createdAt: .init(), destinationApp: "Slack")
+    ]
+    let presenter = MenuBarPresenter(
+      dictation: DictationSwitch(store: MockDictationStore(stored: true)),
+      permissions: MockPermissionChecker(granted: []),
+      modelStatus: { makeStatus(present: false) },
+      history: StubRecents(entries: entries),
+      recentsLimit: -10)
+    await presenter.refresh()
+    #expect(presenter.recents.count == 1)
+  }
+
+  // MARK: Last failure
+
+  @Test("a failed dictation is kept, with the coordinator's own pt-BR message")
+  func failureIsSurfaced() {
+    let presenter = makePresenter()
+    #expect(presenter.lastFailure == nil)
+    let blocked = DictationCoordinator.message(for: .secureInputActive)
+    presenter.apply(.failure(message: blocked))
+    #expect(presenter.lastFailure?.message == blocked)
+    #expect(presenter.lastFailure?.occurredAt == Date(timeIntervalSince1970: 1_000_000))
+  }
+
+  /// The reason it exists at all: the popover is the only surface that outlives
+  /// the pill's 2.5s, and reopening it re-reads permissions and the disk.
+  @Test("refresh does not erase the last failure")
+  func refreshKeepsTheLastFailure() async {
+    let presenter = makePresenter()
+    presenter.apply(.failure(message: "A gravação falhou."))
+    await presenter.refresh()
+    #expect(presenter.lastFailure?.message == "A gravação falhou.")
+  }
+
+  @Test("the coordinator returning to idle does not erase it")
+  func idleDoesNotEraseIt() {
+    let presenter = makePresenter()
+    presenter.apply(.failure(message: "Nada foi capturado."))
+    presenter.apply(.idle)
+    #expect(presenter.lastFailure != nil)
+  }
+
+  @Test("the next dictation supersedes it")
+  func newAttemptClearsIt() {
+    let presenter = makePresenter()
+    presenter.apply(.failure(message: "Nada foi capturado."))
+    presenter.apply(.recording)
+    #expect(presenter.lastFailure == nil)
+  }
+
+  @Test("a success clears it")
+  func successClearsIt() {
+    let presenter = makePresenter()
+    presenter.apply(.failure(message: "Nada foi capturado."))
+    presenter.apply(.success)
+    #expect(presenter.lastFailure == nil)
+  }
+
+  @Test("a second failure replaces the first")
+  func failuresDoNotAccumulate() {
+    let presenter = makePresenter()
+    presenter.apply(.failure(message: "Nada foi capturado."))
+    presenter.apply(.failure(message: "A transcrição falhou."))
+    #expect(presenter.lastFailure?.message == "A transcrição falhou.")
+  }
+
+  @Test("'Dispensar' clears it and nothing brings it back")
+  func dismissDropsIt() async {
+    let presenter = makePresenter()
+    presenter.apply(.failure(message: "A gravação falhou."))
+    presenter.dismissLastFailure()
+    #expect(presenter.lastFailure == nil)
+    await presenter.refresh()
+    #expect(presenter.lastFailure == nil)
+  }
+
+  /// The status icon still collapses failure to idle — the popover is the
+  /// persistent surface, the menu bar is not.
+  @Test("surfacing the failure did not change the status icon's rules")
+  func iconStillCollapsesFailure() {
+    let presenter = makePresenter()
+    presenter.apply(.failure(message: "A gravação falhou."))
+    #expect(presenter.iconVariant == .idle)
   }
 }
 

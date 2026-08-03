@@ -119,20 +119,62 @@ Depends on Phase 1 + DESIGN.md tokens available in `/design`.
       ways). Multi-display geometry tested including negative-origin screens.
       **NEVER RUN — needs the human check** (focus stealing and reduce-motion are
       not assertable in a unit test).
-- [ ] T2.4 Vocabulary boosting via FluidAudio CTC `VocabularyRescorer` fed by jargon
-      dictionary (batch). DoD: boosted term recognized in a fixture where baseline missed.
-- [ ] T2.5 History + undo of last injection. DoD: persistence + undo unit-tested.
-- [ ] T2.6 Input-device selection + AirPods/HFP warning. DoD: device list; warning shown.
+- [ ] T2.4 Vocabulary boosting via FluidAudio CTC `VocabularyRescorer`.
+      **NEEDS A DECISION, NOT AN IMPLEMENTATION.** SPEC.md marks FR-20 [AT RISK]:
+      `VocabularyRescorer` is unreachable from the batch `AsrManager` path this app
+      uses (verified in the pinned 0.15.5). Adopting it means switching to
+      `SlidingWindowAsrManager` AND downloading a second CTC model — which breaks
+      v1's [CONFIRMED] "BATCH-ONLY with ONE engine" (SPEC.md §2) and invalidates the
+      NFR-3 latency measurement. Recommend CANCELLING it for v1 the way T1.5 was
+      cancelled, and letting FR-9 remain the mitigation. Human call.
+- [~] T2.5 History + undo. Store at `~/Library/Application Support/Fala/history.json`
+      (0600, capped, `eraseAll()` + per-entry delete), wired to the popover's
+      "Recentes" and to the coordinator. Undo synthesises ⌘Z to the destination app —
+      it CANNOT guarantee removal, only request it, and that limit is documented in
+      the type. A reentrancy race that posted TWO chords for one dictation (undoing
+      the user's previous work as well) was found by a flaky test and fixed.
+      **Never run by a human.**
+- [~] T2.6 Input-device selection + HFP warning. CoreAudio catalog, transport- and
+      sample-rate-based HFP detection (NOT name matching), persisted choice, route
+      watching, wired into `AudioCapture` and the pipeline. Two defects fixed after
+      review: the engine never un-bound, so returning to "Padrão do sistema" kept
+      recording through the old headset with the warning cleared; and 24 kHz
+      Bluetooth (Apple's HIGH-QUALITY capture rate) was classified hands-free, so
+      the warning fired hardest on healthy AirPods.
+      **No settings UI yet** — selection is persisted but has no picker; the warning
+      reaches the pill only. **Never run by a human.**
 - [x] T2.7 `SecureInputMonitor` blocks injection + PT-BR warning. Shipped early
       with T1.8: checked twice (before the snapshot and again before the chord), and
       `DictationCoordinator.message(for:)` maps all four `InjectionError` cases to
       pt-BR. Only the probe's POLARITY remains unverifiable in a test — T1.10 item 4.
-- [ ] T2.8 `UnicodeInjector` fallback (chunked ~20 UniChars + sleep) + app allowlist.
-      DoD: chunking logic unit-tested; fallback selectable per app.
+- [~] T2.8 `UnicodeInjector` + per-app strategy. Chunking is grapheme-safe (a
+      reviewer could not construct a splitting input: emoji, NFD Portuguese accents,
+      ZWJ, flag pairs all survive). `AdaptiveTextInjector` picks per app and falls
+      back to typing when the clipboard refuses — which is what unblocks a dictation
+      when the clipboard holds a copied spreadsheet range. Wired into the pipeline.
+      **Open:** the default app list covers 2 terminals of ~10 (Ghostty, Warp,
+      Alacritty, kitty are unprotected against typed newlines running shell
+      commands), and the composite's serialisation has no real test.
+      **Never run by a human.**
+- [ ] T2.11 **Settings window** — MISSING FROM THIS PLAN UNTIL NOW. Mockup exists
+      (`design/mockups/settings-window.dc.html`) with five tabs: Geral (hotkey
+      recorder), Áudio (device picker + HFP row + level meter), Dicionário (jargon
+      list, add/remove, import/export), Modelo, Privacidade. Without it three
+      shipped capabilities have no user surface: the hotkey is configurable only in
+      code (FR-1), the device choice is persisted but has no picker (T2.6/FR-18),
+      and the jargon file is editable only by hand (FR-9).
+- [ ] T2.12 **History window** — MISSING FROM THIS PLAN UNTIL NOW. Specified in
+      DESIGN-HANDOFF.md §1 as "Surface 4 — pending render": search, day grouping,
+      per-row copy / re-inject / delete, "Apagar tudo". The store, the undo and the
+      per-entry delete already exist (T2.5); only the window is absent. NOTE: the
+      mockup itself was never produced, so this needs a design pass first.
 - [ ] T2.9 LaunchAgent autostart (opt-in) via CLI `install --launch-at-login`.
 - [ ] T2.10 PT-BR user docs: `docs/pt-BR/instalacao.md`, `permissoes.md`, `uso.md`.
 **GATE 2:** UI matches mockups (visual diff), permissions handled gracefully, docs in
 PT-BR complete. Human OK required.
+Cannot close today for three independent reasons: two of the four designed surfaces
+do not exist (T2.11, T2.12); nothing built in Phase 2 has EVER been run by a human,
+so no visual diff exists; and `docs/pt-BR/` is empty (T2.10).
 
 ## Phase 3 — Optional / distribution
 Depends on Phase 2.

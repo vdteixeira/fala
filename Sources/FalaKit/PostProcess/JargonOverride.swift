@@ -143,6 +143,9 @@ public struct JargonOverride: Sendable, Equatable {
   /// (`"entrys"`), and silence there is exactly the failure the user cannot
   /// diagnose.
   ///
+  /// `entries` and `substitutions` are read TOGETHER, not as alternatives — see
+  /// `OverrideDocument`.
+  ///
   /// - Throws: `JargonDictionaryError.malformedJSON`.
   public static func decode(json data: Data) throws -> JargonOverride {
     let text = String(decoding: data, as: UTF8.self)
@@ -155,9 +158,12 @@ public struct JargonOverride: Sendable, Equatable {
     } catch let error as JargonDictionaryError {
       throw error
     } catch let error as DecodingError {
-      throw JargonDictionaryError.malformedJSON(reason: JargonDictionary.describe(error))
+      // The bytes are passed along so the message can name the failing entry and
+      // quote back the value the user wrote (`JargonDecodingDiagnostic`).
+      throw JargonDictionaryError.malformedJSON(
+        reason: JargonDecodingDiagnostic.describe(error, in: data))
     } catch {
-      throw JargonDictionaryError.malformedJSON(reason: "unreadable JSON")
+      throw JargonDictionaryError.malformedJSON(reason: "não foi possível ler o arquivo")
     }
   }
 }
@@ -166,6 +172,16 @@ public struct JargonOverride: Sendable, Equatable {
 
 /// Mirrors the bundled document deliberately: the user's file is the same format
 /// plus `disable`, so a user can paste a bundled entry into it unchanged.
+///
+/// # Why both rule keys are read, not one of them
+///
+/// `entries` and `substitutions` used to be an if/else-if, so a `substitutions`
+/// map was DISCARDED, silently, whenever `entries` was also present. The seeded
+/// template always writes `"entries": []` — so from any file Fala itself
+/// created, the documented flat-map path could not work at all, and the user got
+/// no warning to explain why their terms did nothing. That is precisely the
+/// failure this module's own doc comment says must never be silent, so both keys
+/// are now read and concatenated.
 private struct OverrideDocument: Decodable {
   let entries: [JargonEntry]
   let disable: [String]
@@ -181,15 +197,19 @@ private struct OverrideDocument: Decodable {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     var recognisedAKey = false
     var entries: [JargonEntry] = []
-    if let list = try container.decodeIfPresent([JargonEntry].self, forKey: .entries) {
-      entries = list
-      recognisedAKey = true
-    } else if let map = try container.decodeIfPresent(
-      [String: String].self, forKey: .substitutions)
-    {
+
+    // The flat map comes FIRST so that a `from` declared in both shapes resolves
+    // to the tiered one: `JargonOverride.merged(over:)` lets the last entry with
+    // a given identity win, and the tiered form is the only one that can carry
+    // `safety` and context, so it must be the one that survives.
+    if let map = try container.decodeIfPresent([String: String].self, forKey: .substitutions) {
       // Sorted so compiled order is stable across runs: JSON objects are
       // unordered and entry order is the documented tie-break.
       entries = map.sorted { $0.key < $1.key }.map { JargonEntry(from: $0.key, to: $0.value) }
+      recognisedAKey = true
+    }
+    if let list = try container.decodeIfPresent([JargonEntry].self, forKey: .entries) {
+      entries += list
       recognisedAKey = true
     }
 
@@ -205,7 +225,7 @@ private struct OverrideDocument: Decodable {
 
     guard recognisedAKey else {
       throw JargonDictionaryError.malformedJSON(
-        reason: "expected 'entries', 'substitutions' or 'disable'")
+        reason: "nenhuma chave reconhecida — use 'entries', 'substitutions' ou 'disable'")
     }
     self.entries = entries
     self.disable = disable

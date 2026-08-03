@@ -27,6 +27,10 @@ public actor DictationCoordinator {
   private let engine: any TranscriptionEngine
   private let injector: any TextInjector
   private let dictionary: JargonDictionary?
+  /// FR-17. Optional, and asked for nothing but a successful injection: the
+  /// coordinator neither knows nor cares where the entry goes. `nil` means the
+  /// app keeps no history, which is what every existing call site gets.
+  private let history: (any DictationHistoryRecording)?
 
   private var state: DictationState = .idle
   private var continuations: [UUID: AsyncStream<DictationState>.Continuation] = [:]
@@ -40,12 +44,14 @@ public actor DictationCoordinator {
     capture: any AudioCapturing,
     engine: any TranscriptionEngine,
     injector: any TextInjector,
-    dictionary: JargonDictionary? = nil
+    dictionary: JargonDictionary? = nil,
+    history: (any DictationHistoryRecording)? = nil
   ) {
     self.capture = capture
     self.engine = engine
     self.injector = injector
     self.dictionary = dictionary
+    self.history = history
     self.biasTerms = dictionary?.biasTerms ?? []
   }
 
@@ -116,7 +122,11 @@ public actor DictationCoordinator {
         return
       }
       try await injector.inject(text)
+      // Announce success BEFORE recording: the pill's success state must not
+      // wait on a disk write. Only an injection that actually landed is
+      // recorded, so a blocked or failed one never reaches the history.
       transition(to: .success)
+      await history?.record(text: text, duration: audio.duration)
     } catch let error as InjectionError {
       transition(to: .failure(message: Self.message(for: error)))
     } catch {

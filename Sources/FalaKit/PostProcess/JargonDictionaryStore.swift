@@ -43,6 +43,21 @@ public struct JargonDictionaryStatus: Sendable {
   /// Non-nil exactly when `userFile == .applied`.
   public let merge: JargonOverride.MergeResult?
 
+  /// Public so a caller outside FalaKit (a `doctor` fake, a preview) can build
+  /// one without going near the disk. `load()` is still the only thing that
+  /// reads a real file.
+  public init(
+    dictionary: JargonDictionary,
+    userFileURL: URL,
+    userFile: JargonUserFileState,
+    merge: JargonOverride.MergeResult?
+  ) {
+    self.dictionary = dictionary
+    self.userFileURL = userFileURL
+    self.userFile = userFile
+    self.merge = merge
+  }
+
   /// The bundled file the merge started from — the reference list of `from`
   /// values the user may override or disable. `doctor` should print it, because
   /// it is the only way to discover them: it lives inside the app bundle.
@@ -108,6 +123,28 @@ public struct JargonDictionaryStatus: Sendable {
     }
     return lines
   }
+
+  /// One pt-BR line naming the file that is in force and what happened to it —
+  /// the answer to "which dictionary am I actually running?", which `summary`
+  /// alone does not give.
+  public var fileSummary: String {
+    switch userFile {
+    case .created:
+      return "\(displayPath) (criado agora, vazio)"
+    case .applied:
+      return isUsingUserFile ? "\(displayPath) (em uso)" : "\(displayPath) (sem alterações)"
+    case .absent(.none):
+      return "\(displayPath) (ainda não existe)"
+    case .absent(.some):
+      return "\(displayPath) (não foi possível criar)"
+    case .ignored:
+      return "\(displayPath) (ignorado)"
+    }
+  }
+
+  /// Whether `doctor` should print a ✓ or a ✗ for the dictionary. False exactly
+  /// when `warnings` has something in it.
+  public var isHealthy: Bool { warnings.isEmpty }
 
   private static func plural(_ count: Int, _ singular: String, _ plural: String) -> String {
     "\(count) \(count == 1 ? singular : plural)"
@@ -282,6 +319,12 @@ public struct JargonDictionaryStore: Sendable {
 extension JargonDictionaryError {
   /// Short pt-BR explanation for `doctor`. Carries only configuration the user
   /// wrote and file names — never audio, never transcript text.
+  ///
+  /// Every `reason` reaching this point is itself pt-BR: decoder failures go
+  /// through `JargonDecodingDiagnostic`, and the entry-level reasons are written
+  /// in Portuguese at their throw sites. It used to interpolate raw English
+  /// (`"The given data was not valid JSON."`), which made the one sentence meant
+  /// to explain the problem the half the user could not read.
   public var userMessage: String {
     switch self {
     case .defaultResourceMissing:
@@ -289,9 +332,9 @@ extension JargonDictionaryError {
     case .unreadable(let file):
       return "não foi possível ler '\(file)'."
     case .malformedJSON(let reason):
-      return "o JSON está inválido (\(reason))."
+      return "o arquivo está inválido — \(reason)."
     case .invalidEntry(let from, let reason):
-      return "a entrada '\(from)' está inválida (\(reason))."
+      return "a entrada '\(from)' está inválida — \(reason)."
     }
   }
 }

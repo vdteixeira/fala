@@ -58,6 +58,10 @@ public enum AudioCaptureError: Error, Equatable, Sendable {
   case notRecording
   /// No usable input device (sample rate 0 usually means none is selected).
   case noInputDevice
+  /// The chosen input device is attached but the engine refused to bind to it
+  /// (SPEC.md FR-18). Distinct from `noInputDevice`: a device that is simply gone
+  /// falls back to the system default instead of failing.
+  case inputDeviceUnavailable
   /// `AVAudioEngine` refused to start.
   case engineFailed(reason: String)
   /// Voice processing is on, which reshapes the mic format and breaks conversion.
@@ -90,10 +94,17 @@ public protocol AudioCapturing: Sendable {
 public actor AudioCapture: AudioCapturing {
   private let engine = AVAudioEngine()
   private let resampler: Resampler
+  /// Which microphone to bind to (SPEC.md FR-18). `nil` keeps the pre-T2.6
+  /// behaviour exactly: `AVAudioEngine` follows the system default.
+  private let inputDevice: (any InputDeviceSelecting)?
   private var buffer: RingBuffer
   private var consumer: Task<Void, Never>?
   private var continuation: AsyncStream<CapturedChunk>.Continuation?
   private var recording = false
+  /// Whether we have ever pinned the engine to a specific device. `setDeviceID`
+  /// is sticky, so this is what tells us a `nil` selection now has to be restored
+  /// to the system default rather than simply left alone.
+  private var hasBoundDevice = false
 
   public var isRecording: Bool { recording }
 
@@ -103,10 +114,12 @@ public actor AudioCapture: AudioCapturing {
 
   public init(
     headroomSeconds: TimeInterval = RingBuffer.defaultHeadroomSeconds,
-    targetSampleRate: Double = 16_000
+    targetSampleRate: Double = 16_000,
+    inputDevice: (any InputDeviceSelecting)? = nil
   ) throws {
     self.resampler = try Resampler(targetSampleRate: targetSampleRate)
     self.buffer = RingBuffer(seconds: headroomSeconds, sampleRate: targetSampleRate)
+    self.inputDevice = inputDevice
   }
 
   /// Begins capturing. Requires microphone permission to have been granted
@@ -115,6 +128,11 @@ public actor AudioCapture: AudioCapturing {
     guard !recording else { throw AudioCaptureError.alreadyRecording }
 
     let input = engine.inputNode
+    // FR-18: bind the chosen microphone FIRST. Binding changes the node's
+    // format, so anything read before it — including the tap's format — would
+    // describe the device the user did not pick.
+    try bindSelectedDevice(to: input)
+
     // FR-3: never turn this on, and refuse to run if it somehow is on.
     guard !input.isVoiceProcessingEnabled else {
       throw AudioCaptureError.voiceProcessingEnabled
@@ -190,6 +208,41 @@ public actor AudioCapture: AudioCapturing {
     guard recording else { return }
     _ = try? await stop()
     buffer.removeAll()
+  }
+
+  /// Points the engine's input node at the user's chosen microphone (FR-18).
+  ///
+  /// A `nil` answer means "follow the system default", which covers both the
+  /// unconfigured app and a chosen device that is currently unplugged — the
+  /// missing device is reported through `InputRoute.substitutionNotice`, not by
+  /// refusing to dictate. A device that IS attached but rejects the binding is a
+  /// real failure and says so.
+  private func bindSelectedDevice(to input: AVAudioInputNode) throws {
+    let unit = input.auAudioUnit
+    let target: AudioDeviceID?
+
+    if let chosen = inputDevice?.currentInputDeviceID() {
+      target = chosen
+    } else if hasBoundDevice {
+      // Returning early here was a real bug: `setDeviceID` is STICKY, and the
+      // engine outlives every dictation, so once bound the AUHAL stops following
+      // the system default. Switching back to "Padrão do sistema" then kept
+      // recording through the old headset while `InputRoute` reported the healthy
+      // built-in mic and the pill's HFP warning disappeared — the worst shape of
+      // this bug, because the warning goes away while the problem does not.
+      target = CoreAudioHAL.defaultInputDeviceID()
+    } else {
+      // Never bound anything: the engine is already following the default.
+      return
+    }
+
+    guard let target, unit.deviceID != target else { return }
+    do {
+      try unit.setDeviceID(target)
+      hasBoundDevice = inputDevice?.currentInputDeviceID() != nil
+    } catch {
+      throw AudioCaptureError.inputDeviceUnavailable
+    }
   }
 
   private func ingest(_ chunk: CapturedChunk) {

@@ -9,8 +9,10 @@ import SwiftUI
 // privacy footer.
 //
 // Behavior per HIG, where it overrides the mockup:
-//  * the popover's vibrancy is `NSPopover`'s own material, not a flat fill; the
-//    `--color-bg-vibrancy` token is the Reduce-Transparency fallback (DESIGN.md).
+//  * the popover's vibrancy is `NSPopover`'s own material, not a flat fill; when
+//    Reduce Transparency is on it falls back to an OPAQUE token
+//    (`theme.reduceTransparencyFill`) — a translucent "fallback" would ignore the
+//    setting (DESIGN.md, HIG).
 //  * the 36×22 custom switch is a native `Toggle(.switch)` tinted with the accent
 //    token — DESIGN.md says not to reinvent controls.
 //  * "Conceder"/"Tentar novamente" are native buttons with a token tint, so they
@@ -33,6 +35,21 @@ struct MenuBarActions {
   var openHistory: (() -> Void)?
   var copyTranscription: ((RecentTranscription) -> Void)?
   var quit: (() -> Void)?
+
+  /// The one lookup both surfaces go through: the popover row and the app's
+  /// main menu (`FalaMainMenu`). A command with no handler is disabled in BOTH,
+  /// so the menu can never run something the row says is unavailable.
+  func handler(for command: MenuBarCommand) -> (() -> Void)? {
+    switch command {
+    case .openSettings: return openSettings
+    case .openHistory: return openHistory
+    case .quit: return quit
+    }
+  }
+
+  func quickActions() -> [MenuBarQuickAction] {
+    MenuBarQuickAction.all { handler(for: $0) != nil }
+  }
 }
 
 struct MenuBarPopoverView: View {
@@ -46,13 +63,12 @@ struct MenuBarPopoverView: View {
     VStack(alignment: .leading, spacing: 0) {
       header
       banner
+      failureNotice
       ModelBlockView(block: presenter.model, retry: actions.retryModelDownload)
         .padding(.horizontal, theme.space.md)
         .padding(.bottom, theme.space.xs)
       recentsSection
-      Divider()
-        .padding(.horizontal, theme.space.md)
-        .padding(.vertical, theme.space.xxs)
+      separator
       quickActions
       privacyFooter
     }
@@ -62,14 +78,27 @@ struct MenuBarPopoverView: View {
 
   /// HIG over mockup: `NSPopover` already paints a vibrant material, so the
   /// content stays transparent and lets it through. When the user has asked for
-  /// less transparency, the flat token takes over — that is exactly what
-  /// `--color-bg-vibrancy` is for.
+  /// LESS transparency, an opaque token takes over — `bg.vibrancy` is the flat
+  /// stand-in for the material and carries the material's own alpha, so it is
+  /// the one token that cannot serve as this fallback.
   @ViewBuilder private var surfaceBackground: some View {
     if reduceTransparency {
-      theme.color.bg.vibrancy
+      theme.reduceTransparencyFill
     } else {
       Color.clear
     }
+  }
+
+  /// The mockup's `height: 1px; background: var(--color-border); margin:
+  /// var(--space-05) var(--space-2)`. A `Divider()` would paint AppKit's own
+  /// separator color instead of the token.
+  private var separator: some View {
+    Rectangle()
+      .fill(theme.color.border.base)
+      .frame(height: MenuBarLayout.hairline)
+      .padding(.horizontal, theme.space.md)
+      .padding(.vertical, theme.space.xxs)
+      .accessibilityHidden(true)
   }
 
   private var header: some View {
@@ -77,7 +106,7 @@ struct MenuBarPopoverView: View {
       BrandMarkView()
       VStack(alignment: .leading, spacing: 0) {
         Text(MenuBarStrings.brandName)
-          .font(theme.type.headline.font.weight(.bold))
+          .font(MenuBarType.brandName.font)
           .foregroundStyle(theme.color.text.primary)
         Text(presenter.dictation.statusLabel)
           .font(theme.type.micro.font)
@@ -120,6 +149,26 @@ struct MenuBarPopoverView: View {
     }
   }
 
+  /// The last dictation that failed (Phase 2 review).
+  ///
+  /// The pill states a failure for 2.5s and the status icon collapses it to
+  /// idle, so this is the ONLY surface where a user who was looking at their
+  /// editor — exactly the US-3 case, an injection blocked by a secure field —
+  /// can still find out what happened. "Dispensar" clears it; so does the next
+  /// dictation.
+  @ViewBuilder private var failureNotice: some View {
+    if let notice = presenter.lastFailure {
+      FailureNoticeView(
+        notice: notice, now: presenter.now,
+        dismiss: { presenter.dismissLastFailure() }
+      )
+      .padding(.horizontal, theme.space.md)
+      .padding(.top, theme.space.xxs)
+      .padding(.bottom, theme.space.xs)
+      .transition(.opacity)
+    }
+  }
+
   private var recentsSection: some View {
     VStack(alignment: .leading, spacing: 0) {
       Text(MenuBarStrings.recentsTitle)
@@ -145,23 +194,15 @@ struct MenuBarPopoverView: View {
     .padding(.vertical, theme.space.xxs)
   }
 
+  /// Rows and key equivalents both come from `MenuBarCommand`, so the hint a row
+  /// prints is by construction the key the app binds. `.keyboardShortcut` here
+  /// backs up `FalaMainMenu`: whichever of the two AppKit consults first, only
+  /// one of them can consume the event.
   private var quickActions: some View {
     VStack(spacing: 0) {
-      QuickActionRowView(
-        symbol: FalaSymbol.settings,
-        title: MenuBarStrings.openSettings,
-        shortcut: MenuBarStrings.openSettingsShortcut,
-        action: actions.openSettings)
-      QuickActionRowView(
-        symbol: FalaSymbol.history,
-        title: MenuBarStrings.openHistory,
-        shortcut: nil,
-        action: actions.openHistory)
-      QuickActionRowView(
-        symbol: FalaSymbol.power,
-        title: MenuBarStrings.quit,
-        shortcut: MenuBarStrings.quitShortcut,
-        action: actions.quit)
+      ForEach(actions.quickActions()) { action in
+        QuickActionRowView(action: action, run: actions.handler(for: action.command))
+      }
     }
     .padding(.horizontal, theme.space.xs)
     .padding(.bottom, theme.space.xxs)
@@ -231,7 +272,23 @@ private struct BrandBarsView: View {
   private static let accentBarIndex = 2
 }
 
-// MARK: - Permissions banner
+// MARK: - Notices
+
+/// The soft-fill + 1px stroke both notices wear, tinted by their state. Written
+/// once so the banner and the failure notice cannot drift apart.
+private struct NoticeChrome: ViewModifier {
+  @Environment(\.theme) private var theme
+
+  let style: StateStyle
+
+  func body(content: Content) -> some View {
+    let shape = RoundedRectangle(cornerRadius: theme.radius.md, style: .continuous)
+    content
+      .padding(theme.space.xs)
+      .background(style.soft, in: shape)
+      .overlay(shape.strokeBorder(style.tint, lineWidth: MenuBarLayout.hairline))
+  }
+}
 
 private struct PermissionsBannerView: View {
   @Environment(\.theme) private var theme
@@ -257,15 +314,49 @@ private struct PermissionsBannerView: View {
         .controlSize(.small)
         .disabled(action == nil)
     }
-    .padding(theme.space.xs)
-    .background(style.soft, in: shape)
-    .overlay(shape.strokeBorder(style.tint, lineWidth: MenuBarLayout.hairline))
+    .modifier(NoticeChrome(style: style))
     .accessibilityElement(children: .contain)
     .accessibilityLabel(banner.message)
   }
+}
 
-  private var shape: RoundedRectangle {
-    RoundedRectangle(cornerRadius: theme.radius.md, style: .continuous)
+/// The last failed dictation, in firm red.
+///
+/// It shows the coordinator's pt-BR message and how long ago it happened. There
+/// is no transcript here and never can be: `DictationState.failure` carries only
+/// this message (NFR-1).
+private struct FailureNoticeView: View {
+  @Environment(\.theme) private var theme
+
+  let notice: DictationFailureNotice
+  let now: Date
+  let dismiss: () -> Void
+
+  var body: some View {
+    let style = theme.style(for: notice.stateKind)
+    HStack(spacing: theme.space.xs) {
+      Image(systemName: notice.symbol)
+        .imageScale(.medium)
+        .foregroundStyle(style.tint)
+      VStack(alignment: .leading, spacing: 0) {
+        Text(notice.message)
+          .font(theme.type.caption.font)
+          .lineSpacing(theme.type.caption.lineSpacing)
+          .foregroundStyle(theme.color.text.primary)
+          .fixedSize(horizontal: false, vertical: true)
+        Text(notice.metaLine(relativeTo: now))
+          .font(theme.type.micro.font)
+          .foregroundStyle(theme.color.text.tertiary)
+      }
+      Spacer(minLength: theme.space.xxs)
+      Button(notice.dismissTitle) { dismiss() }
+        .buttonStyle(.bordered)
+        .tint(style.tint)
+        .controlSize(.small)
+    }
+    .modifier(NoticeChrome(style: style))
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(notice.accessibilityLabel(relativeTo: now))
   }
 }
 
@@ -285,7 +376,7 @@ private struct ModelBlockView: View {
           .imageScale(.medium)
           .foregroundStyle(style.tint)
         Text(block.title)
-          .font(theme.type.caption.font.weight(.semibold))
+          .font(MenuBarType.blockTitle.font)
           .foregroundStyle(theme.color.text.primary)
           .fixedSize(horizontal: false, vertical: true)
         Spacer(minLength: theme.space.xxs)
@@ -342,7 +433,9 @@ private struct ProgressTrackView: View {
         Capsule().fill(tint).frame(width: proxy.size.width * fraction)
       }
     }
-    .frame(height: MenuBarLayout.progressHeight)
+    // The mockup's 4px track IS the 4pt grid step, so it reads the token rather
+    // than naming the number twice.
+    .frame(height: theme.space.xxs)
     // Motion §6: 200ms standard on every width update, and nothing at all under
     // Reduce Motion — `theme.motion.animation` returns nil there.
     .animation(
@@ -406,31 +499,36 @@ private struct RecentRowView: View {
   }
 }
 
+/// One quick-action row.
+///
+/// Every foreground color comes from `theme.quickActionStyle(isEnabled:)`. The
+/// row used to paint `text.primary` on its label unconditionally, which
+/// overrode the dimming `.buttonStyle(.plain)` derives from `isEnabled` and left
+/// two dead rows (Ajustes, Histórico) looking live.
 private struct QuickActionRowView: View {
   @Environment(\.theme) private var theme
   @State private var isHovered = false
 
-  let symbol: String
-  let title: String
-  let shortcut: String?
-  let action: (() -> Void)?
+  let action: MenuBarQuickAction
+  let run: (() -> Void)?
 
   var body: some View {
+    let style = theme.quickActionStyle(isEnabled: action.isEnabled)
     Button {
-      action?()
+      run?()
     } label: {
       HStack(spacing: theme.space.xs) {
-        Image(systemName: symbol)
+        Image(systemName: action.symbol)
           .imageScale(.small)
-          .foregroundStyle(theme.color.text.secondary)
-        Text(title)
+          .foregroundStyle(style.symbol)
+        Text(action.title)
           .font(theme.type.body.font)
-          .foregroundStyle(theme.color.text.primary)
+          .foregroundStyle(style.title)
         Spacer(minLength: theme.space.xxs)
-        if let shortcut {
-          Text(shortcut)
-            .font(theme.type.micro.font.monospaced())
-            .foregroundStyle(theme.color.text.tertiary)
+        if let hint = action.shortcutHint {
+          Text(hint)
+            .font(MenuBarType.shortcutHint.font)
+            .foregroundStyle(style.shortcut)
         }
       }
       .padding(.horizontal, theme.space.xs)
@@ -440,13 +538,22 @@ private struct QuickActionRowView: View {
       .contentShape(shape)
     }
     .buttonStyle(.plain)
-    .disabled(action == nil)
+    .disabled(!action.isEnabled)
+    .keyboardShortcut(shortcut)
+    .accessibilityHint(action.accessibilityHint ?? "")
     .onHover { isHovered = $0 }
     .animation(theme.motion.quick, value: isHovered)
   }
 
+  /// SwiftUI ignores a shortcut on a disabled button, so an unavailable row
+  /// cannot claim a key either way.
+  private var shortcut: KeyboardShortcut? {
+    guard let key = action.command.shortcut?.key else { return nil }
+    return KeyboardShortcut(KeyEquivalent(key), modifiers: .command)
+  }
+
   private var hoverBackground: Color {
-    isHovered && action != nil ? theme.color.bg.surfaceHover : .clear
+    isHovered && action.isEnabled ? theme.color.bg.surfaceHover : .clear
   }
 
   private var shape: RoundedRectangle {

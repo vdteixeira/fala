@@ -63,6 +63,10 @@ func runDoctor() {
   let model = ModelStatus.current()
   if model.isPresent {
     say("  ✓ Baixado (\(model.formattedSize ?? "tamanho desconhecido"))")
+  } else if let problem = model.problemMessage {
+    // Distinguishes "never downloaded" from "downloaded and broken" — an
+    // interrupted transfer used to report as ready.
+    say("  ✗ \(problem)")
   } else {
     say("  ✗ Não baixado — a primeira ditada vai baixá-lo (alguns minutos).")
   }
@@ -70,9 +74,15 @@ func runDoctor() {
 
   // Loading the dictionary is also the check that the app's resource bundle was
   // packaged: without it `Bundle.module` traps, and no `try?` can catch that.
+  // Goes through the STORE, not loadDefault(), so the user's override file and
+  // any complaint about it actually surface (FR-9).
   say("\nDicionário de jargão:")
-  if let dictionary = try? JargonDictionary.loadDefault() {
-    say("  ✓ \(dictionary.activeEntryCount) substituições ativas")
+  if let status = try? JargonDictionaryStore().load() {
+    say("  \(status.isHealthy ? "✓" : "✗") \(status.summary)")
+    say("  \(status.fileSummary)")
+    for warning in status.warnings {
+      say("  ⚠︎ \(warning)")
+    }
   } else {
     say("  ✗ Não carregou — o recurso não foi empacotado no app.")
   }

@@ -16,14 +16,21 @@ final class MenuBarController: NSObject {
   /// One image per variant. Drawing is cheap, but the icon is rebuilt on every
   /// state change and a menu-bar item redraws far more often than it changes.
   private var imageCache: [MenuBarIconVariant: NSImage] = [:]
+  /// The handlers after `resolve`, kept so the main menu's items can run exactly
+  /// what the popover rows run.
+  private var resolvedActions = MenuBarActions()
+  /// The menu we installed, so `deinit` removes ours and only ours.
+  private var installedMainMenu: NSMenu?
 
   init(presenter: MenuBarPresenter, actions: MenuBarActions = MenuBarActions()) {
     self.presenter = presenter
     self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     super.init()
 
-    configurePopover(actions: resolve(actions))
+    resolvedActions = resolve(actions)
+    configurePopover(actions: resolvedActions)
     configureStatusItem()
+    installMainMenu()
     updateIcon()
     trackIconChanges()
   }
@@ -36,6 +43,11 @@ final class MenuBarController: NSObject {
   /// crash. Same pattern as `HotkeyManager.deinit`.
   @MainActor deinit {
     NSStatusBar.system.removeStatusItem(statusItem)
+    // Menu items hold their target WEAKLY, so a menu that outlived us would keep
+    // ⌘Q on screen doing nothing. Only ever removes the menu we installed.
+    if let menu = installedMainMenu, NSApplication.shared.mainMenu === menu {
+      NSApplication.shared.mainMenu = nil
+    }
   }
 
   // MARK: Wiring
@@ -58,7 +70,45 @@ final class MenuBarController: NSObject {
         self?.openPermissionSettings()
       }
     }
+    // A quick action opens another surface, so the popover has done its job.
+    // Wrapped here rather than in each handler so the ones this class does not
+    // own (Ajustes, Histórico) get it for free when they are wired.
+    resolved.openSettings = dismissingPopover(resolved.openSettings)
+    resolved.openHistory = dismissingPopover(resolved.openHistory)
     return resolved
+  }
+
+  /// Keeps `nil` as `nil` — that is what marks a command unavailable in both the
+  /// popover row and the main menu.
+  private func dismissingPopover(_ handler: (() -> Void)?) -> (() -> Void)? {
+    guard let handler else { return nil }
+    return { [weak self] in
+      self?.popover.performClose(nil)
+      handler()
+    }
+  }
+
+  /// Binds ⌘Q and ⌘, (SPEC.md FR-15; Phase 2 review).
+  ///
+  /// An accessory app draws no menu bar, but `NSApplication` still offers key
+  /// equivalents to the main menu while the app is active — which is exactly
+  /// when the popover is key and the user is looking at the "⌘ Q" hint.
+  ///
+  /// Skipped if something already installed a main menu, so this can never stomp
+  /// a richer one the app grows later.
+  private func installMainMenu() {
+    guard NSApplication.shared.mainMenu == nil else { return }
+    let menu = FalaMainMenu.make(
+      target: self,
+      action: #selector(runMenuCommand(_:)),
+      isEnabled: { [resolvedActions] in resolvedActions.handler(for: $0) != nil })
+    NSApplication.shared.mainMenu = menu
+    installedMainMenu = menu
+  }
+
+  @objc private func runMenuCommand(_ sender: NSMenuItem) {
+    guard let command = MenuBarCommand.command(forMenuTag: sender.tag) else { return }
+    resolvedActions.handler(for: command)?()
   }
 
   private func configureStatusItem() {

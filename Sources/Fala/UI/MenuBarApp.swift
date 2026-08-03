@@ -46,8 +46,12 @@ final class MenuBarAppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     let dictation = DictationSwitch()
-    let presenter = MenuBarPresenter(dictation: dictation)
-    let pipeline = DictationPipeline(presenter: presenter, dictation: dictation)
+    // One store, shared: the pipeline writes to it and the popover reads from it.
+    // Two instances would render an empty "Recentes" over a populated file.
+    let history = DictationHistoryStore()
+    let presenter = MenuBarPresenter(dictation: dictation, history: history)
+    let pipeline = DictationPipeline(
+      presenter: presenter, dictation: dictation, history: history)
     self.pipeline = pipeline
 
     var actions = MenuBarActions()
@@ -85,11 +89,20 @@ final class DictationPipeline {
   /// Held for the process lifetime: the panel is the only surface that shows a
   /// failed or blocked dictation, and releasing it would take the window with it.
   private var overlay: PillOverlayController?
+  /// FR-17 history, shared with the popover so both see the same entries.
+  private let history: DictationHistoryStore
+  /// FR-18 device tracking, held for the process lifetime.
+  private var devices: InputDeviceCenter?
   private var tasks: [Task<Void, Never>] = []
 
-  init(presenter: MenuBarPresenter, dictation: DictationSwitch) {
+  init(
+    presenter: MenuBarPresenter,
+    dictation: DictationSwitch,
+    history: DictationHistoryStore
+  ) {
     self.presenter = presenter
     self.dictation = dictation
+    self.history = history
   }
 
   func start() {
@@ -101,6 +114,7 @@ final class DictationPipeline {
     tasks.removeAll()
     hotkey?.shutdown()
     hotkey = nil
+    devices?.stop()
   }
 
   /// "Tentar novamente" on the model block.
@@ -123,7 +137,13 @@ final class DictationPipeline {
     guard permissions.isGranted(.accessibility) else { return }
 
     do {
-      let capture = try AudioCapture()
+      // FR-18: bind the chosen microphone and follow route changes, so an HFP
+      // headset raises the pill's warning instead of silently degrading the audio.
+      let devices = InputDeviceCenter()
+      devices.start()
+      self.devices = devices
+
+      let capture = try AudioCapture(inputDevice: devices.captureSelection)
       let engine = ParakeetEngine()
       self.engine = engine
       // FR-9: the user's override file wins over the bundled default. Falls back
@@ -132,11 +152,16 @@ final class DictationPipeline {
       let dictionary =
         (try? JargonDictionaryStore().load())?.dictionary
         ?? (try? JargonDictionary.loadDefault())
+
       let coordinator = DictationCoordinator(
         capture: capture,
         engine: engine,
-        injector: ClipboardInjector(),
-        dictionary: dictionary)
+        // FR-12/FR-14: picks clipboard or typing per app, and falls back to
+        // typing when the clipboard holds content it cannot restore — without
+        // this, a copied spreadsheet range blocks every dictation.
+        injector: AdaptiveTextInjector(),
+        dictionary: dictionary,
+        history: history)
 
       // FR-16: without this the six states have no visible surface at all — a
       // blocked injection (US-3) would fail silently, since the status icon

@@ -61,6 +61,63 @@ public enum PtBRList {
   }
 }
 
+// MARK: - Last failure
+
+/// The red notice the popover shows after a dictation failed.
+///
+/// WHY THIS EXISTS (Phase 2 review). `MenuBarIconVariant` collapses `.failure`
+/// to idle on purpose — the menu bar has no dismissal timer — and the pill is
+/// gone 2.5 s later. Without this the pt-BR message `DictationCoordinator`
+/// produced for US-3 (a blocked injection into a secure field) reached the user
+/// only if they happened to be looking at the pill. The popover is the app's one
+/// persistent surface, so the last failure lives here until it is superseded or
+/// dismissed.
+///
+/// PRIVACY (CLAUDE.md, NFR-1): `message` is the coordinator's own pt-BR string.
+/// It never contains transcript text, and this value is in-memory only — nothing
+/// writes it to disk, to os_log, or to stdout.
+public struct DictationFailureNotice: Sendable, Equatable {
+  /// The coordinator's message, verbatim.
+  public let message: String
+  public let occurredAt: Date
+
+  /// Fails for every state that is not a failure, so the popover cannot render
+  /// an empty notice by mistake — same rule as `PermissionsBanner`.
+  public init?(state: DictationState, at date: Date) {
+    guard case .failure(let message) = state else { return nil }
+    let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+    self.message = trimmed.isEmpty ? Self.genericMessage : trimmed
+    self.occurredAt = date
+  }
+
+  /// Used when a failure arrives with no message at all. An empty red banner
+  /// would tell the user less than nothing.
+  public static let genericMessage = "A ditada falhou."
+
+  /// Firm red, the same `error` state the pill uses for this (handoff §2).
+  public var stateKind: StateKind { .error }
+
+  /// `lock.fill` when the cause was a secure field, the generic triangle
+  /// otherwise — the cause map the pill already owns, reused rather than
+  /// re-derived.
+  public var symbol: String {
+    PillPresentation.isSecureFieldFailure(message)
+      ? FalaSymbol.secureField : FalaSymbol.error
+  }
+
+  public var dismissTitle: String { MenuBarStrings.dismiss }
+
+  /// "há 2 min" — the same pt-BR ages the recents rows use.
+  public func metaLine(relativeTo now: Date) -> String {
+    RelativeTimePtBR.describe(now.timeIntervalSince(occurredAt))
+  }
+
+  /// One line for VoiceOver, which cannot see the icon or the layout.
+  public func accessibilityLabel(relativeTo now: Date) -> String {
+    "\(message) · \(metaLine(relativeTo: now))"
+  }
+}
+
 // MARK: - Model status block
 
 /// Download progress, as a value so the percentage arithmetic is testable.

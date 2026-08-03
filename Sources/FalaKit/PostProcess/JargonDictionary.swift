@@ -200,9 +200,9 @@ public struct JargonDictionary: Sendable {
     } catch let error as JargonDictionaryError {
       throw error
     } catch let error as DecodingError {
-      throw JargonDictionaryError.malformedJSON(reason: Self.describe(error))
+      throw JargonDictionaryError.malformedJSON(reason: Self.describe(error, in: data))
     } catch {
-      throw JargonDictionaryError.malformedJSON(reason: "unreadable JSON")
+      throw JargonDictionaryError.malformedJSON(reason: "não foi possível ler o arquivo")
     }
     try self.init(entries: document.entries, includeRisky: includeRisky)
   }
@@ -364,15 +364,11 @@ public struct JargonDictionary: Sendable {
   }
 
   /// Shared with `JargonOverride` so both file formats report a decoding failure
-  /// the same way.
-  static func describe(_ error: DecodingError) -> String {
-    switch error {
-    case .keyNotFound(let key, _): return "missing key '\(key.stringValue)'"
-    case .typeMismatch(_, let context), .valueNotFound(_, let context):
-      return context.debugDescription
-    case .dataCorrupted(let context): return context.debugDescription
-    @unknown default: return "invalid JSON"
-    }
+  /// the same way — in Brazilian Portuguese, naming the failing entry. It used
+  /// to hand back `context.debugDescription`, i.e. raw English decoder prose,
+  /// straight into a pt-BR warning.
+  static func describe(_ error: DecodingError, in data: Data? = nil) -> String {
+    JargonDecodingDiagnostic.describe(error, in: data)
   }
 }
 
@@ -390,17 +386,22 @@ extension JargonDictionary {
     let order: Int
 
     init(entry: JargonEntry, order: Int) throws {
+      // The `reason` strings are pt-BR because they are USER-FACING: they are
+      // interpolated verbatim into `JargonDictionaryError.userMessage`, which is
+      // what `doctor` and the menu bar show when a hand-written entry is
+      // rejected. Identifiers and JSON keys stay English — they are the file
+      // format, not prose.
       let words = JargonDictionary.tokenize(entry.from).map(\.folded)
       guard !words.isEmpty else {
         throw JargonDictionaryError.invalidEntry(
           from: entry.from,
-          reason: "'from' contains no word characters"
+          reason: "'from' não tem nenhuma letra ou número"
         )
       }
       guard !entry.to.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
         throw JargonDictionaryError.invalidEntry(
           from: entry.from,
-          reason: "'to' is empty; deletions are not a substitution"
+          reason: "'to' está vazio; apagar não é substituir"
         )
       }
       let before = try Self.foldContext(entry.contextBefore, of: entry)
@@ -408,7 +409,7 @@ extension JargonDictionary {
       if entry.safety == .contextual && before.isEmpty && after.isEmpty {
         throw JargonDictionaryError.invalidEntry(
           from: entry.from,
-          reason: "safety 'contextual' requires contextBefore and/or contextAfter"
+          reason: "safety 'contextual' exige contextBefore e/ou contextAfter"
         )
       }
       self.words = words
@@ -427,7 +428,7 @@ extension JargonDictionary {
         guard tokens.count == 1, let only = tokens.first else {
           throw JargonDictionaryError.invalidEntry(
             from: entry.from,
-            reason: "context term '\(term)' must be exactly one word"
+            reason: "o contexto '\(term)' precisa ter exatamente uma palavra"
           )
         }
         return only.folded
@@ -478,6 +479,10 @@ extension JargonDictionary {
 /// user overrides — the flat `substitutions` map this file used before tiers
 /// existed. Flat entries are treated as `safe`, which is the user's own
 /// assertion: they wrote the mapping.
+///
+/// Both keys are read and concatenated, for the same reason `OverrideDocument`
+/// does it: an if/else-if here would drop a `substitutions` map without a word
+/// as soon as an `entries` array — even an empty one — was also present.
 private struct JargonDocument: Decodable {
   let entries: [JargonEntry]
 
@@ -488,18 +493,25 @@ private struct JargonDocument: Decodable {
 
   init(from decoder: any Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    if let list = try container.decodeIfPresent([JargonEntry].self, forKey: .entries) {
-      entries = list
-    } else if let map = try container.decodeIfPresent(
-      [String: String].self, forKey: .substitutions)
-    {
+    var collected: [JargonEntry] = []
+    var recognisedAKey = false
+    // Flat map first so a `from` present in both resolves to the tiered entry,
+    // which is the only shape that can carry `safety` and context.
+    if let map = try container.decodeIfPresent([String: String].self, forKey: .substitutions) {
       // Sorted so the compiled order is stable across runs (JSON objects are
       // unordered, and entry order is the documented tie-break).
-      entries = map.sorted { $0.key < $1.key }.map { JargonEntry(from: $0.key, to: $0.value) }
-    } else {
-      throw JargonDictionaryError.malformedJSON(
-        reason: "expected an 'entries' array or a 'substitutions' object")
+      collected = map.sorted { $0.key < $1.key }.map { JargonEntry(from: $0.key, to: $0.value) }
+      recognisedAKey = true
     }
+    if let list = try container.decodeIfPresent([JargonEntry].self, forKey: .entries) {
+      collected += list
+      recognisedAKey = true
+    }
+    guard recognisedAKey else {
+      throw JargonDictionaryError.malformedJSON(
+        reason: "esperava uma lista 'entries' ou um objeto 'substitutions'")
+    }
+    entries = collected
   }
 }
 

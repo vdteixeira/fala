@@ -278,3 +278,40 @@ jargon-to-jargon rather than corrupting Portuguese.
 - `doctor` does not yet report the dictionary store (which file is in use, how many
   entries, warnings) — the API exists.
 - The menu-bar defects listed under T2.2 in TASKS.md.
+
+## Phase 2 features (2026-08-02)
+T2.5 (history + undo), T2.6 (device selection + HFP), T2.8 (UnicodeInjector +
+per-app strategy) plus the defect fixes. 580 tests / 54 suites.
+
+**The same integration gap appeared again**, and it is now a pattern worth naming:
+each build round ships correct, well-tested library code that NOTHING CALLS. This
+round all three features were unreachable — `AudioCapture()` was still constructed
+with no device, both injector call sites still said `ClipboardInjector()`, and the
+history store existed with no writer. Wiring is the lead's job and has to be an
+explicit step, not an assumption; the reviewers caught it all three times.
+
+**"An actor prevents concurrent execution" was wrong AGAIN**, in a second module.
+`InjectionUndoService.undoLastInjection()` carried the same claim
+`ClipboardInjector` once did, and had the same defect: actors are reentrant across
+`await`, the method suspends four times, and two concurrent callers both saw
+`undoRequestedAt == nil`. A double click posted TWO ⌘Z chords — undoing the
+dictation AND whatever the user had typed before it. Found by a test that failed
+about one run in three; a flaky test hiding a real race is worse than a red one.
+Fixed with the same predecessor-chaining pattern. **If a third module claims an
+actor serialises a multi-suspension method, assume it does not.**
+
+Two FR-18 defects fixed after review:
+- `AudioCapture` never un-bound. `setDeviceID` is sticky and the engine outlives
+  every dictation, so selecting "Padrão do sistema" after using a headset kept
+  recording through the headset while the route reported the healthy built-in mic
+  and the pill's warning disappeared — the warning going away while the problem
+  stayed is the worst shape of this.
+- 24 000 Hz Bluetooth was classified hands-free (the bound was inclusive). That is
+  Apple's HIGH-QUALITY capture rate, so the warning fired hardest on AirPods in the
+  mode that fixes the HFP problem, and 24 kHz is well above what a 16 kHz pipeline
+  consumes. Bound is exclusive now, with a regression test.
+
+`doctor` now reports what it checks: model readiness distinguishes "never
+downloaded" from "downloaded and broken" (an interrupted transfer used to read as
+ready), and the dictionary goes through `JargonDictionaryStore` so the user's
+override file and its complaints actually surface.
