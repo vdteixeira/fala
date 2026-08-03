@@ -51,7 +51,23 @@ final class SettingsWindowBuilder {
     actions.dictionaryChanged = { [weak pipeline] dictionary in
       pipeline?.applyDictionary(dictionary)
     }
+    // Without this the picker persists the choice and nothing acts on it until
+    // the next launch — and the pane's caption honestly says so when it is nil.
+    actions.engineChanged = { [weak pipeline] choice in
+      pipeline?.applyEngine(choice)
+    }
     actions.openURL = { NSWorkspace.shared.open($0) }
+
+    // Same bar, drawn where the user clicked. Without these two the Modelo tab
+    // showed nothing while the engine's model downloaded, so picking Cohere
+    // looked like a no-op.
+    let modelPresenter = ModelPanePresenter(preferences: preferences)
+    pipeline?.onEnginePreparation = { [weak modelPresenter] stage in
+      modelPresenter?.reportEnginePreparation(stage)
+    }
+    pipeline?.onEnginePreparationFinished = { [weak modelPresenter] failure in
+      modelPresenter?.finishEnginePreparation(error: failure)
+    }
 
     let controller = SettingsWindowController(
       general: GeneralPanePresenter(
@@ -63,7 +79,7 @@ final class SettingsWindowBuilder {
         devices: pipeline?.deviceCenter ?? InputDeviceCenter(),
         monitor: pipeline?.levelMonitor),
       dictionary: DictionaryPanePresenter(),
-      model: ModelPanePresenter(),
+      model: modelPresenter,
       actions: actions)
     return controller
   }

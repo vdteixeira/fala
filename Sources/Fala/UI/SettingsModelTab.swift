@@ -17,16 +17,33 @@ import SwiftUI
 //    it asks first;
 //  * Cancelar stays visible and DISABLED during install, which cannot be
 //    interrupted, and carries a VoiceOver hint saying why.
+//
+// ADDITION the mockup has no vocabulary for: the engine picker at the top.
+// `settings-window.dc.html` predates `CohereEngine`, so it draws exactly one
+// engine and no mutually-exclusive choice anywhere in the window. The rows
+// therefore reuse the mockup's own inset-row language (inset fill, md radius,
+// accent-soft + accent border for the selected one) rather than inventing a
+// look, and HIG supplies the behaviour the mockup cannot:
+//  * radio semantics, not a menu — two options, each needing a two-line
+//    explanation and its OWN disk status, which a `Picker(.menu)` cannot show;
+//  * built from `Button`s with the `.isSelected` trait, the same deviation
+//    `SettingsView`'s tab chips already argue for and document;
+//  * the switch is confirmed first whenever the target engine's model is not on
+//    disk, because agreeing to compare an engine is not agreeing to a download.
 
 struct SettingsModelTab: View {
   @Environment(\.theme) private var theme
 
   let presenter: ModelPanePresenter
   @State private var isConfirmingReplace = false
+  /// The engine the user asked for and has not yet paid for — non-nil exactly
+  /// while the download warning is on screen.
+  @State private var pendingEngine: TranscriptionEngineChoice?
 
   var body: some View {
     let pane = presenter.pane
     VStack(alignment: .leading, spacing: theme.space.xs) {
+      engineSection(presenter.engines)
       modelRow(pane)
       if let detail = pane.problemDetail {
         SettingsCaption(text: detail, isProblem: true)
@@ -51,6 +68,122 @@ struct SettingsModelTab: View {
       Button(pane.actionTitle, role: .destructive) { presenter.startDownload() }
       Button(SettingsStrings.cancel, role: .cancel) {}
     }
+    // Confirms the COST of a switch, never the switch itself: an engine whose
+    // model is already on disk changes with one click and no dialog.
+    .confirmationDialog(
+      presenter.engines.confirmationTitle,
+      isPresented: isConfirmingEngine,
+      titleVisibility: .visible,
+      presenting: pendingEngine
+    ) { choice in
+      Button(presenter.engines.confirmTitle) {
+        presenter.selectEngine(choice)
+        pendingEngine = nil
+      }
+      Button(presenter.engines.cancelTitle, role: .cancel) { pendingEngine = nil }
+    } message: { choice in
+      Text(presenter.engines.downloadWarning(for: choice) ?? "")
+    }
+  }
+
+  // MARK: - The engine picker
+
+  private func engineSection(_ picker: EnginePicker) -> some View {
+    VStack(alignment: .leading, spacing: theme.space.xxs) {
+      Text(picker.title)
+        .font(SettingsType.rowTitle.font)
+        .foregroundStyle(theme.color.text.primary)
+        .padding(.horizontal, theme.space.md)
+      ForEach(picker.options) { option in
+        engineRow(option, in: picker)
+      }
+      SettingsCaption(text: picker.caption)
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(picker.help)
+  }
+
+  private func engineRow(_ option: EngineOption, in picker: EnginePicker) -> some View {
+    let style = theme.style(for: option.stateKind)
+    return Button {
+      select(option, in: picker)
+    } label: {
+      HStack(alignment: .top, spacing: theme.space.xs) {
+        Image(systemName: radioSymbol(option))
+          .font(.system(size: SettingsLayout.tabIconSize))
+          .foregroundStyle(option.isSelected ? theme.color.accent.base : theme.color.text.tertiary)
+          .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: theme.space.xxs) {
+          Text(option.title)
+            .font(SettingsType.rowTitle.font)
+            .foregroundStyle(theme.color.text.primary)
+          Text(option.summary)
+            .font(theme.type.caption.font)
+            .lineSpacing(theme.type.caption.lineSpacing)
+            .foregroundStyle(theme.color.text.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+          statusLine(option, tint: style.tint)
+        }
+        Spacer(minLength: 0)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(.vertical, theme.space.xs)
+      .padding(.horizontal, theme.space.md)
+      .background(option.isSelected ? theme.color.accent.soft : theme.color.bg.inset, in: shape)
+      .overlay(
+        shape.strokeBorder(
+          option.isSelected ? theme.color.accent.base : .clear,
+          lineWidth: SettingsLayout.hairline)
+      )
+      .contentShape(shape)
+    }
+    .buttonStyle(.plain)
+    .help(picker.help)
+    // Spelled out rather than `children: .combine`, which on a `Button` can cost
+    // the button role itself. The disk status is the VALUE — a row whose model
+    // is missing has to say so to VoiceOver, not only to the eye.
+    .accessibilityLabel(option.title)
+    .accessibilityValue(option.statusLine)
+    .accessibilityHint(option.summary)
+    .accessibilityAddTraits(option.isSelected ? [.isSelected] : [])
+    .animation(theme.motion.quick, value: option.isSelected)
+  }
+
+  /// Whether THIS engine's model is on disk — read from its own directory, never
+  /// inferred from the other's.
+  private func statusLine(_ option: EngineOption, tint: Color) -> some View {
+    HStack(spacing: theme.space.xxs) {
+      Image(systemName: option.symbol)
+        .font(.system(size: SettingsLayout.smallIconSize))
+        .accessibilityHidden(true)
+      Text(option.statusLine)
+        .font(theme.type.micro.font)
+    }
+    .foregroundStyle(tint)
+  }
+
+  private func radioSymbol(_ option: EngineOption) -> String {
+    option.isSelected ? FalaSymbol.radioSelected : FalaSymbol.radioUnselected
+  }
+
+  /// One click when the model is there, a confirmation when it is not.
+  private func select(_ option: EngineOption, in picker: EnginePicker) {
+    guard !option.isSelected else { return }
+    if picker.downloadWarning(for: option.choice) == nil {
+      presenter.selectEngine(option.choice)
+    } else {
+      pendingEngine = option.choice
+    }
+  }
+
+  private var isConfirmingEngine: Binding<Bool> {
+    Binding(
+      get: { pendingEngine != nil },
+      set: { if !$0 { pendingEngine = nil } })
+  }
+
+  private var shape: RoundedRectangle {
+    RoundedRectangle(cornerRadius: theme.radius.md, style: .continuous)
   }
 
   // MARK: - The model row

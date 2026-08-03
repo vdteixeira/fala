@@ -101,6 +101,7 @@ public final class MenuBarPresenter {
 
   @ObservationIgnored private let permissions: any PermissionChecking
   @ObservationIgnored private let modelStatus: @Sendable () -> ModelStatus
+  @ObservationIgnored private let engineName: @Sendable () -> String
   @ObservationIgnored private let history: any RecentTranscriptionsProviding
   @ObservationIgnored private let clock: @Sendable () -> Date
   @ObservationIgnored private let recentsLimit: Int
@@ -115,6 +116,12 @@ public final class MenuBarPresenter {
     dictation: DictationSwitch,
     permissions: any PermissionChecking = SystemPermissionChecker(),
     modelStatus: @escaping @Sendable () -> ModelStatus = { ModelStatus.current() },
+    /// NO DEFAULT, deliberately. With one, removing the wiring in
+    /// `MenuBarApp` still compiled and every test still passed — the tests
+    /// inject their own name — so the popover would silently go back to saying
+    /// "Parakeet" over Cohere's status. The compiler is the only thing that
+    /// catches that.
+    engineName: @escaping @Sendable () -> String,
     history: any RecentTranscriptionsProviding = NoRecentTranscriptions(),
     clock: @escaping @Sendable () -> Date = { Date() },
     recentsLimit: Int = MenuBarLayout.maxRecents
@@ -122,6 +129,7 @@ public final class MenuBarPresenter {
     self.dictation = dictation
     self.permissions = permissions
     self.modelStatus = modelStatus
+    self.engineName = engineName
     self.history = history
     self.clock = clock
     // 3–4 rows per DESIGN-HANDOFF.md §1. Clamped so a caller cannot turn the
@@ -140,6 +148,12 @@ public final class MenuBarPresenter {
   public var iconVariant: MenuBarIconVariant {
     MenuBarIconVariant.variant(for: state, dictationEnabled: dictation.isEnabled)
   }
+
+  /// Headline for the model block, naming the SELECTED engine.
+  ///
+  /// Read through the same closure `refresh()` uses, so the name and the status
+  /// under it always describe the same engine.
+  public var modelTitle: String { model.title(engine: engineName()) }
 
   /// Whether anything is blocking dictation right now — the popover's one
   /// summary signal.
@@ -195,6 +209,15 @@ public final class MenuBarPresenter {
   public func reportModelProgress(_ progress: ModelDownloadProgress) {
     downloadOverride = .downloading(progress)
     model = .downloading(progress)
+  }
+
+  /// The model is on disk and is being loaded into memory. Kept apart from
+  /// `reportModelProgress` because it must not say "baixando": selecting an
+  /// engine you already have showed a download bar for as long as the load took,
+  /// which for Cohere is 97 s.
+  public func reportModelLoading() {
+    downloadOverride = .loading
+    model = .loading
   }
 
   public func reportModelFailure() {

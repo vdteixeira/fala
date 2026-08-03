@@ -24,7 +24,9 @@ public enum DictationState: Sendable, Equatable {
 /// tap: `HotkeyManager` feeds it phases, and it publishes states back.
 public actor DictationCoordinator {
   private let capture: any AudioCapturing
-  private let engine: any TranscriptionEngine
+  /// `var`, like `dictionary`: the engine is selectable in Ajustes › Modelo and
+  /// a change must reach the next dictation, not wait for a relaunch.
+  private var engine: any TranscriptionEngine
   private let injector: any TextInjector
   /// `var`, not `let`: edits in Ajustes › Dicionário must reach the NEXT
   /// dictation. Making the user relaunch to pick up a term they just added is
@@ -59,6 +61,12 @@ public actor DictationCoordinator {
   }
 
   public var currentState: DictationState { state }
+
+  /// Swaps the transcription engine. Same rule as the dictionary: applies from
+  /// the next dictation, so one in flight cannot be stitched from two models.
+  public func setEngine(_ engine: any TranscriptionEngine) {
+    self.engine = engine
+  }
 
   /// Swaps the jargon dictionary. Applies from the next dictation on; one in
   /// flight keeps the rules it started with, so a mid-utterance edit cannot
@@ -140,6 +148,8 @@ public actor DictationCoordinator {
       await history?.record(text: text, duration: audio.duration)
     } catch let error as InjectionError {
       transition(to: .failure(message: Self.message(for: error)))
+    } catch let error as TranscriptionError {
+      transition(to: .failure(message: Self.message(for: error)))
     } catch {
       transition(to: .failure(message: "A transcrição falhou."))
     }
@@ -165,6 +175,28 @@ public actor DictationCoordinator {
       return "Nada para inserir."
     case .pasteboardFailure:
       return "Não consegui inserir o texto."
+    }
+  }
+
+  /// pt-BR messages for the four ways transcription can fail.
+  ///
+  /// These were one string, "A transcrição falhou.", for every case. That is
+  /// wrong twice: a model that was never downloaded and an utterance the engine
+  /// could not decode need OPPOSITE actions from the user, and collapsing them
+  /// left no way to tell which happened — the failure carries no error code
+  /// anywhere else, because nothing about a dictation may be logged.
+  ///
+  /// None of these embeds transcript text.
+  static func message(for error: TranscriptionError) -> String {
+    switch error {
+    case .notReady:
+      return "O modelo ainda não está pronto. Abra os Ajustes › Modelo."
+    case .modelUnavailable:
+      return "Não consegui carregar o modelo. Verifique a conexão."
+    case .invalidAudio:
+      return "O áudio não serviu — fale um pouco mais antes de soltar a tecla."
+    case .transcriptionFailed:
+      return "O motor não conseguiu transcrever esse áudio."
     }
   }
 

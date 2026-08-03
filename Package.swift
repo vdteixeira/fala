@@ -33,7 +33,13 @@ let package = Package(
         .executableTarget(
             name: "FalaSpike",
             dependencies: [
-                .product(name: "FluidAudio", package: "FluidAudio")
+                // FalaKit so the harness can measure the SHIPPING engines rather
+                // than a hand-copied reimplementation of their configuration.
+                // The gate decides which engine ships; measuring a lookalike
+                // would let the two drift on exactly the settings that matter
+                // (melChunkContext, forced language, decoder variant).
+                "FalaKit",
+                .product(name: "FluidAudio", package: "FluidAudio"),
             ]
         ),
         .testTarget(

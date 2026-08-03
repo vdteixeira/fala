@@ -235,8 +235,10 @@ private final class RecordingPreferencesStore: PreferencesStoring {
   private struct State {
     var hotkey: Hotkey
     var showOverlay: Bool
+    var engine = Preferences.defaultEngine
     var savedHotkeys: [Hotkey] = []
     var savedOverlay: [Bool] = []
+    var savedEngines: [TranscriptionEngineChoice] = []
   }
 
   private let state: OSAllocatedUnfairLock<State>
@@ -264,6 +266,18 @@ private final class RecordingPreferencesStore: PreferencesStoring {
     }
   }
 
+  func loadEngine() -> TranscriptionEngineChoice { state.withLock { $0.engine } }
+
+  /// Recorded like the others, so a future Geral change that touched the engine
+  /// choice would be visible here instead of silent.
+  func saveEngine(_ engine: TranscriptionEngineChoice) {
+    state.withLock {
+      $0.engine = engine
+      $0.savedEngines.append(engine)
+    }
+  }
+
   var savedHotkeys: [Hotkey] { state.withLock { $0.savedHotkeys } }
   var savedOverlay: [Bool] { state.withLock { $0.savedOverlay } }
+  var savedEngines: [TranscriptionEngineChoice] { state.withLock { $0.savedEngines } }
 }

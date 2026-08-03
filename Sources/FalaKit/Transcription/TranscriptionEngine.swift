@@ -67,6 +67,15 @@ public protocol TranscriptionEngine: Sendable {
   /// startup, never on the hotkey path.
   func prepare() async throws
 
+  /// `prepare()`, reporting progress.
+  ///
+  /// Exists because selecting an engine whose model is not on disk starts a
+  /// multi-hundred-megabyte download, and without this the UI had nothing to
+  /// show: the user clicked, nothing visibly happened, and the app looked
+  /// broken while it was in fact working. `onStage` is called on an unspecified
+  /// executor — hop to the main actor inside it if you are driving UI.
+  func prepare(onStage: @escaping @Sendable (ModelDownloadStage) -> Void) async throws
+
   /// Transcribes one complete utterance (batch; v1 has no streaming).
   ///
   /// - Parameter biasTerms: vocabulary the engine should favour, e.g. the jargon
@@ -79,6 +88,12 @@ public protocol TranscriptionEngine: Sendable {
 
 extension TranscriptionEngine {
   public static var requiredSampleRate: Double { 16_000 }
+
+  /// Engines that cannot report progress still satisfy the protocol; they simply
+  /// never call back. A test double does not have to grow a download story.
+  public func prepare(onStage: @escaping @Sendable (ModelDownloadStage) -> Void) async throws {
+    try await prepare()
+  }
 
   public func transcribe(_ audio: AudioBuffer) async throws -> Transcript {
     try await transcribe(audio, biasTerms: [])

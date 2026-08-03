@@ -163,6 +163,32 @@ global hotkey, speak, release; the transcript is inserted at the cursor in any a
     reachable from the batch `transcribe(_:decoderState:language:)` path this app
     uses. It is not a free mitigation; treat FR-9 as the mitigation budget until
     someone demonstrates a working integration.
+
+  **RUN 1b — 2026-08-03: a SECOND ENGINE measured on the SAME fixtures.**
+  Cohere Transcribe (FluidAudio 0.15.5, q8 CoreML, v2 decoder, `<|pt|>` forced in
+  the decoder prefill) run against the identical six fixtures. This does NOT close
+  the gate — the same two self-graded references and the same 70-word sample
+  invalidate it exactly as they invalidate Run 1 — but it changes what the open
+  question is.
+  - **Code-switching WER 5,2%** (3/58) versus Parakeet's 13,8%; aggregate 4,3%
+    versus 11,4%. Terms lost: `merge` only, against Parakeet's seven.
+  - Every term Parakeet lost and Cohere kept — `branch`, `commit`, `compose`,
+    `deploy`, `postgres`, `staging` — is the exact failure mode NFR-2's
+    code-switching criterion exists to catch. So the language lock appears to do
+    the thing FR-7 says Parakeet's `language` parameter cannot do.
+  - **But it costs ~30× the latency: 3,3–4,7 s per utterance versus 113–144 ms.**
+    NFR-3 asks for a response that feels immediate on the hotkey path. Parakeet
+    passes with an order of magnitude of margin; **Cohere does not pass at all**
+    on the number as written.
+  - **And 4,98 GB of disk** (measured on the completed directory) versus 461 MB.
+  - The first inference in a process cost **92 s** before a warm-up was added to
+    `CohereEngine.prepare()`; after it, 3,3 s. See `docs/architecture.md`.
+  - **DECISION: still OPEN, and now a genuine trade-off rather than a single
+    engine falling short.** Parakeet is fast and loses the jargon; Cohere keeps the
+    jargon and is not real-time. Neither has been measured on enough audio to
+    justify a switch. Run 2 must measure BOTH, and the human at the gate has to
+    rule on whether NFR-3's latency budget or NFR-2's code-switching criterion
+    wins when they conflict — because on this evidence they do.
 - **Phase 1 (MVP batch):** hotkey down/up detected; audio captured at native rate and
   resampled to 16 kHz mono F32 (verified by a fixture test on the resampler); Parakeet
   returns non-empty text for a known PT-BR WAV fixture; jargon dictionary applied

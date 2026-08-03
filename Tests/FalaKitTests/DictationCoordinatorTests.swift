@@ -299,4 +299,55 @@ struct DictationCoordinatorTests {
     // about the old vocabulary.
     #expect(await engine.receivedBiasTerms.last?.contains("branch") == true)
   }
+
+  // MARK: - Why the dictation failed
+
+  /// Every `TranscriptionError` case used to arrive as the single string "A
+  /// transcrição falhou.". A model that was never downloaded and an utterance
+  /// too short to decode need OPPOSITE actions from the user, and nothing about
+  /// a dictation may be logged — so if the pill does not distinguish them,
+  /// nothing does.
+  @Test("Each transcription failure says something different and actionable")
+  func transcriptionFailuresAreDistinguished() async throws {
+    let cases: [TranscriptionError] = [
+      .notReady,
+      .modelUnavailable(reason: "download failed"),
+      .invalidAudio(reason: "too short"),
+      .transcriptionFailed(reason: "no text"),
+    ]
+
+    var seen: Set<String> = []
+    for error in cases {
+      let coordinator = makeCoordinator(engine: MockTranscriptionEngine.failing(error))
+      await coordinator.handle(.pressed)
+      await coordinator.handle(.released)
+
+      guard case .failure(let message) = await coordinator.currentState else {
+        Issue.record("expected a failure for \(error)")
+        continue
+      }
+      #expect(!message.isEmpty)
+      #expect(message != "A transcrição falhou.", "still the catch-all: \(error)")
+      seen.insert(message)
+    }
+    #expect(seen.count == cases.count, "two failures share a message: \(seen)")
+  }
+
+  /// The reason a third-party string must never reach the pill: FluidAudio's
+  /// errors are English, and the `reason` payloads exist for developers.
+  @Test("A failure message never leaks the error's internal reason")
+  func failureMessagesDoNotLeakInternalReasons() async {
+    let coordinator = makeCoordinator(
+      engine: MockTranscriptionEngine.failing(
+        .transcriptionFailed(reason: "cohere pipeline failed")))
+    await coordinator.handle(.pressed)
+    await coordinator.handle(.released)
+
+    guard case .failure(let message) = await coordinator.currentState else {
+      Issue.record("expected a failure")
+      return
+    }
+    #expect(!message.contains("cohere"))
+    #expect(!message.contains("pipeline"))
+  }
 }

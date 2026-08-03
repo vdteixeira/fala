@@ -629,6 +629,7 @@ struct HistoryPopoverTests {
       modelStatus: {
         ModelStatus(isPresent: true, sizeBytes: 1, location: ModelStatus.defaultLocation)
       },
+      engineName: { TranscriptionEngineChoice.parakeet.shortName },
       history: store,
       clock: clock.reader,
       recentsLimit: 4)

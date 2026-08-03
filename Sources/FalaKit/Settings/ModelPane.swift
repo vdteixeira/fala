@@ -3,17 +3,200 @@ import Observation
 
 /// pt-BR copy for Ajustes › Modelo, in one place.
 public enum ModelPaneStrings {
-  /// The mockup's heading for the model row. `ModelBlock.modelName` is reused so
-  /// the popover and the settings tab cannot drift on the product name.
-  public static var title: String { "\(ModelBlock.modelName) v3 · pt-BR" }
+  /// Shown when switching engines could not prepare the new model.
+  public static let preparationFailed =
+    "Não consegui preparar esse motor. Verifique a conexão e tente de novo."
+
+  /// Heading for the model row.
+  ///
+  /// Hardcoded to Parakeet ON PURPOSE, and derived from the choice rather than
+  /// from a loose string: this row shows Parakeet's directory and its button
+  /// runs `AsrModels.download(version: .v3)`, so it manages that engine and no
+  /// other. Making it follow the selection would put Cohere's name over
+  /// Parakeet's status and a button that re-downloads Parakeet.
+  ///
+  /// The popover's block is the opposite case and now behaves the opposite way:
+  /// it reports the SELECTED engine, so its name is a parameter.
+  public static var title: String { "\(TranscriptionEngineChoice.parakeet.displayName) · pt-BR" }
   public static let cancel = "Cancelar"
   public static let preparing = "Preparando o download…"
+  /// Shown when the model is already on disk. Says LOADING, not downloading:
+  /// picking an engine you already have used to read "Baixando modelo…" and sit
+  /// there for 97 s, which is indistinguishable from re-downloading 4,98 GB.
+  public static let loading = "Carregando o modelo…"
   public static let installing = "Instalando…"
   public static let cancelling = "Cancelando…"
   /// Said to VoiceOver on the disabled "Cancelar" during `installing`, which is
   /// otherwise an unexplained dead control.
   public static let cancelUnavailable =
     "A instalação não pode ser interrompida; ela termina em alguns segundos."
+}
+
+/// pt-BR copy for the engine picker that sits above the model block.
+public enum EnginePickerStrings {
+  public static let title = "Motor de transcrição"
+  /// VoiceOver name and tooltip for the group as a whole.
+  public static let help = "Escolher o motor usado nas próximas ditadas"
+
+  /// Under the group when the app can adopt the change without a relaunch.
+  public static let appliesNextDictation = "A troca vale a partir da próxima ditada."
+
+  /// Under the group when it cannot. Not a nicer way of saying the same thing:
+  /// the app builds its engine once at launch, so if nobody wired a handler,
+  /// telling the user "próxima ditada" would be a straight lie.
+  public static var appliesNextLaunch: String {
+    "A troca vale quando você reabrir o \(MenuBarStrings.brandName)."
+  }
+
+  /// Title of the sheet that asks before a switch that costs a download. The
+  /// cost itself is the message, so the title stays a question.
+  public static let confirmTitle = "Trocar o motor de transcrição?"
+  public static let confirmSwitch = "Trocar e baixar"
+
+  /// Shown BEFORE the switch when the target engine's model is not on disk.
+  ///
+  /// The size is FORMATTED from `ModelLayout.expectedDownloadBytes`, never
+  /// written into this string. A hardcoded "4,7 GB" here — a `du -h` reading, so
+  /// GiB — sat next to a status line that formats the same directory in decimal
+  /// GB and says "4,98 GB". One number, one source.
+  ///
+  /// When the layout has no measured size the sentence simply omits it, rather
+  /// than guessing. That is the case for any engine added before someone
+  /// completes a download of it.
+  public static func downloadWarning(for name: String, downloadBytes: Int64?) -> String {
+    let size = downloadBytes.map { " Ele ocupa cerca de \(Self.format($0))." } ?? ""
+    return "O modelo do \(name) ainda não está no seu Mac. Ele é um download "
+      + "separado, que só começa depois da troca e pode levar alguns minutos."
+      + size
+      + " Depois disso ele fica salvo aqui e o ditado volta a funcionar offline."
+  }
+
+  /// The same formatter `ModelStatus.formattedSize` uses, so a size quoted
+  /// before the download and the size shown after it agree.
+  static func format(_ bytes: Int64) -> String {
+    let formatter = ByteCountFormatter()
+    formatter.allowedUnits = [.useMB, .useGB]
+    formatter.countStyle = .file
+    return formatter.string(fromByteCount: bytes)
+  }
+
+  /// The status line of one engine row — whether ITS OWN model is on disk.
+  ///
+  /// The size is whatever was MEASURED in that engine's directory, never a
+  /// number from a doc and never the other engine's. When there is nothing to
+  /// measure it says so instead of printing a size it does not have.
+  public static func statusLine(for status: ModelStatus) -> String {
+    switch status.readiness {
+    case .ready:
+      guard let size = status.formattedSize else { return "Modelo pronto" }
+      return "Modelo pronto · \(size) em disco"
+    case .incomplete:
+      guard let size = status.formattedSize else { return "Download incompleto" }
+      return "Download incompleto · \(size) em disco"
+    case .notDownloaded:
+      return "Modelo ainda não baixado"
+    }
+  }
+}
+
+/// One row of the engine picker.
+///
+/// `status` is read from `choice.modelLayout` and from nowhere else. That is the
+/// whole defence against the defect this tab already had once, in reverse: a row
+/// that reported "pronto" from the Parakeet directory while the engine it named
+/// had never been downloaded.
+public struct EngineOption: Sendable, Equatable, Identifiable {
+
+  public let choice: TranscriptionEngineChoice
+
+  /// Readiness of THIS engine's model directory.
+  public let status: ModelStatus
+
+  public let isSelected: Bool
+
+  public init(choice: TranscriptionEngineChoice, status: ModelStatus, isSelected: Bool) {
+    self.choice = choice
+    self.status = status
+    self.isSelected = isSelected
+  }
+
+  public var id: TranscriptionEngineChoice { choice }
+  public var title: String { choice.displayName }
+  public var summary: String { choice.summary }
+  public var statusLine: String { EnginePickerStrings.statusLine(for: status) }
+
+  /// True only when this engine could transcribe right now. Everything that
+  /// warns about a download reads this, never `choice`.
+  public var isModelReady: Bool { status.isPresent }
+
+  public var symbol: String {
+    switch status.readiness {
+    case .ready: return FalaSymbol.processor
+    case .incomplete: return FalaSymbol.warning
+    case .notDownloaded: return FalaSymbol.download
+    }
+  }
+
+  /// Which of the six states tints the status line. Same mapping as the model
+  /// block's: amber for "unusable but recoverable", neutral for "not here yet".
+  public var stateKind: StateKind {
+    switch status.readiness {
+    case .ready: return .success
+    case .incomplete: return .warning
+    case .notDownloaded: return .idle
+    }
+  }
+}
+
+/// The engine picker, as one value (SPEC.md FR-5's seam, made visible).
+public struct EnginePicker: Sendable, Equatable {
+
+  /// Always every case of `TranscriptionEngineChoice`, in declaration order —
+  /// the default first.
+  public let options: [EngineOption]
+
+  /// Whether a change reaches the RUNNING app, or only the next launch.
+  ///
+  /// Not cosmetic and not a guess: the presenter sets it from whether anyone
+  /// wired `onEngineChanged`, so the caption cannot claim an immediacy that
+  /// nothing in the app delivers.
+  public let appliesImmediately: Bool
+
+  public init(options: [EngineOption], appliesImmediately: Bool) {
+    self.options = options
+    self.appliesImmediately = appliesImmediately
+  }
+
+  public var title: String { EnginePickerStrings.title }
+  public var help: String { EnginePickerStrings.help }
+
+  public var selected: TranscriptionEngineChoice? {
+    options.first(where: \.isSelected)?.choice
+  }
+
+  public var caption: String {
+    appliesImmediately
+      ? EnginePickerStrings.appliesNextDictation
+      : EnginePickerStrings.appliesNextLaunch
+  }
+
+  /// The pt-BR sentence to show BEFORE switching, or `nil` when the switch costs
+  /// nothing.
+  ///
+  /// Driven by what is on disk, not by which engine it is: switching back to
+  /// Parakeet on a machine whose Parakeet model was deleted also downloads, and
+  /// saying nothing there would be the same omission.
+  public func downloadWarning(for choice: TranscriptionEngineChoice) -> String? {
+    guard let option = options.first(where: { $0.choice == choice }) else { return nil }
+    guard !option.isModelReady else { return nil }
+    return EnginePickerStrings.downloadWarning(
+      for: option.title, downloadBytes: choice.modelLayout.expectedDownloadBytes)
+  }
+
+  /// Sheet title, then the button that goes through with it.
+  public var confirmationTitle: String { EnginePickerStrings.confirmTitle }
+  public var confirmTitle: String { EnginePickerStrings.confirmSwitch }
+  public var cancelTitle: String { SettingsStrings.cancel }
 }
 
 /// Everything Ajustes › Modelo renders, as one value.
@@ -154,6 +337,8 @@ public struct ModelPane: Sendable, Equatable {
     guard let stage else { return nil }
     if isCancelling { return ModelPaneStrings.cancelling }
     switch stage {
+    case .loading:
+      return ModelPaneStrings.loading
     case .preparing:
       return ModelPaneStrings.preparing
     case .transferring(let progress):
@@ -232,29 +417,84 @@ public final class ModelPanePresenter {
     ModelPane(
       status: status,
       capacity: capacity,
-      stage: downloads.stage,
-      isCancelling: downloads.isCancelling,
-      outcome: downloads.lastOutcome)
+      // The engine switch wins: it is the download the user just triggered.
+      stage: enginePreparation ?? downloads.stage,
+      isCancelling: enginePreparation == nil && downloads.isCancelling,
+      outcome: enginePreparationFailure.map { .failed(.failed(reason: $0)) }
+        ?? downloads.lastOutcome)
   }
+
+  /// The engine picker. Reads `preferences.engine` (observable) and the cached
+  /// per-engine statuses, so selecting a row re-renders both rows.
+  public var engines: EnginePicker {
+    EnginePicker(
+      options: TranscriptionEngineChoice.allCases.map { choice in
+        EngineOption(
+          choice: choice,
+          status: engineStatus[choice] ?? Self.absent(choice),
+          isSelected: choice == preferences.engine)
+      },
+      appliesImmediately: onEngineChanged != nil)
+  }
+
+  /// The engine-switch download, kept apart from `downloads` (which drives the
+  /// Parakeet-only "Baixar novamente" button). Same bar, different trigger: this
+  /// one starts because the user picked an engine, not because they pressed a
+  /// button.
+  /// OBSERVED, deliberately. Marking these `@ObservationIgnored` — as the rest of
+  /// this type's injected collaborators are — froze the tab on the first state it
+  /// rendered: the user saw "preparando" forever while the download ran fine
+  /// underneath, because SwiftUI was never told anything had changed.
+  public private(set) var enginePreparation: ModelDownloadStage?
+  public private(set) var enginePreparationFailure: String?
 
   public let downloads: ModelDownloadController
 
+  /// Where the engine choice survives a relaunch. MUST be the app's shared
+  /// instance — see the initialiser.
+  public let preferences: Preferences
+
+  /// Called when the user picks a different engine, so a running app can rebuild
+  /// its pipeline around it.
+  ///
+  /// Wiring it is what makes `EnginePicker.caption` say "a partir da próxima
+  /// ditada"; leaving it nil makes the same caption say "quando você reabrir",
+  /// which is the truth in an app that only reads the preference at launch.
+  /// Either is honest — silently claiming the first while doing the second is
+  /// not, which is why this is a callback and not a Bool.
+  @ObservationIgnored public var onEngineChanged: ((TranscriptionEngineChoice) -> Void)?
+
   private var status: ModelStatus
   private var capacity: VolumeCapacity?
+  private var engineStatus: [TranscriptionEngineChoice: ModelStatus] = [:]
 
   @ObservationIgnored private let modelStatus: @Sendable () -> ModelStatus
+  @ObservationIgnored private let engineStatusReader:
+    @Sendable (TranscriptionEngineChoice) -> ModelStatus
   @ObservationIgnored private let capacityReader: any VolumeCapacityReading
 
+  /// - Parameter preferences: the app's SHARED instance. The default builds a
+  ///   fresh one so this type stays constructible on its own (and testable), but
+  ///   two `Preferences` objects each hold their own copy of every value and
+  ///   only agree by accident — the same trap `SettingsWindowBuilder` already
+  ///   documents for the hotkey.
   public init(
     downloads: ModelDownloadController = ModelDownloadController(),
+    preferences: Preferences = Preferences(),
     modelStatus: @escaping @Sendable () -> ModelStatus = { ModelStatus.current() },
+    engineStatus: @escaping @Sendable (TranscriptionEngineChoice) -> ModelStatus = {
+      ModelStatus.current($0.modelLayout)
+    },
     capacityReader: any VolumeCapacityReading = FileSystemVolumeCapacityReader()
   ) {
     self.downloads = downloads
+    self.preferences = preferences
     self.modelStatus = modelStatus
+    self.engineStatusReader = engineStatus
     self.capacityReader = capacityReader
     self.status = modelStatus()
     self.capacity = capacityReader.capacity(at: ModelStatus.defaultLocation)
+    self.engineStatus = Self.readEngineStatus(using: engineStatus)
 
     // A finished download changes both readings — a `.replace` that failed
     // half-way is the case that matters, since the tab would otherwise keep
@@ -278,6 +518,68 @@ public final class ModelPanePresenter {
   public func refresh() {
     status = modelStatus()
     capacity = capacityReader.capacity(at: ModelStatus.defaultLocation)
+    engineStatus = Self.readEngineStatus(using: engineStatusReader)
+  }
+
+  /// Walks every engine's own directory, once, off the view body — each call is
+  /// a full integrity check of a model directory.
+  private static func readEngineStatus(
+    using read: @Sendable (TranscriptionEngineChoice) -> ModelStatus
+  ) -> [TranscriptionEngineChoice: ModelStatus] {
+    Dictionary(uniqueKeysWithValues: TranscriptionEngineChoice.allCases.map { ($0, read($0)) })
+  }
+
+  /// Stand-in for a status that was never read. It reports NOT DOWNLOADED at the
+  /// engine's real location rather than `.ready`: an engine nobody has checked
+  /// must never render as usable.
+  private static func absent(_ choice: TranscriptionEngineChoice) -> ModelStatus {
+    ModelStatus(
+      readiness: .notDownloaded, sizeBytes: nil, location: choice.modelLayout.location)
+  }
+
+  /// Persists the user's engine choice and tells the app about it.
+  ///
+  /// The view is expected to have shown `EnginePicker.downloadWarning(for:)`
+  /// first when it is non-nil; this does not enforce that, because a caller that
+  /// legitimately knows better (a CLI flag, a test) should not have to fake a
+  /// dialog. What it does enforce is that re-selecting the current engine writes
+  /// nothing and notifies nobody.
+  public func selectEngine(_ choice: TranscriptionEngineChoice) {
+    guard choice != preferences.engine else { return }
+    preferences.setEngine(choice)
+    // Show the bar IMMEDIATELY when the chosen model is not on disk. The first
+    // real progress report only arrives after HuggingFace answers, which is
+    // seconds — and the user had just clicked and seen nothing happen at all.
+    //
+    // Read through `engineStatus`, the same map the rows render from, NOT
+    // `ModelStatus.current(...)`. Going straight to the filesystem here made the
+    // decision disagree with what the tab was displaying, and made the test for
+    // this line pass or fail according to whether the developer's own
+    // `~/Library/Application Support` happened to hold a 4,7 GB Cohere cache.
+    // `.preparing` when there are bytes to fetch, `.loading` when there are not.
+    // Both need SOME immediate feedback — the click has to do something visible —
+    // but showing a download for a model that is already on disk is what made
+    // switching to an installed engine look like a second 4,98 GB transfer.
+    enginePreparation =
+      (engineStatus[choice] ?? Self.absent(choice)).isPresent ? .loading : .preparing
+    enginePreparationFailure = nil
+    onEngineChanged?(choice)
+  }
+
+  /// Progress of the SELECTED engine's preparation, pushed by the pipeline.
+  ///
+  /// Separate from `downloads`, which drives the Parakeet-only "Baixar
+  /// novamente" button: this is the download that starts because the user
+  /// switched engines, and it has no button of its own to hang off.
+  public func reportEnginePreparation(_ stage: ModelDownloadStage) {
+    enginePreparation = stage
+  }
+
+  /// Preparation ended. `error` nil means it worked.
+  public func finishEnginePreparation(error: String?) {
+    enginePreparation = nil
+    enginePreparationFailure = error
+    refresh()
   }
 
   /// Starts whichever download the current state calls for. Ignored when the

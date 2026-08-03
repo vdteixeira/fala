@@ -21,6 +21,10 @@ import Observation
 /// - `hotkey` — SPEC.md FR-1 says the hotkey is configurable, but it was a
 ///   constructor parameter with no persistence, so every launch went back to
 ///   right-Option regardless of what the user picked.
+/// - `engine` — SPEC.md FR-5's seam has a second implementation now
+///   (`CohereEngine`), and Ajustes › Modelo lets the user compare the two. The
+///   choice has to outlive the window that made it, and it has no other home:
+///   the engine is CONSTRUCTED at launch, so nothing else is around to hold it.
 ///
 /// `Sendable` rather than `@MainActor` (the shape `DictationEnabledStoring` uses)
 /// because the CLI reads these outside any actor, and `Fala doctor` must be able
@@ -30,6 +34,8 @@ public protocol PreferencesStoring: Sendable {
   func saveShowOverlay(_ showOverlay: Bool)
   func loadHotkey() -> Hotkey
   func saveHotkey(_ hotkey: Hotkey)
+  func loadEngine() -> TranscriptionEngineChoice
+  func saveEngine(_ engine: TranscriptionEngineChoice)
 }
 
 /// The shipping store: `UserDefaults`, one key per preference.
@@ -40,6 +46,7 @@ public protocol PreferencesStoring: Sendable {
 public struct UserDefaultsPreferencesStore: PreferencesStoring {
   static let showOverlayKey = "fala.showOverlay"
   static let hotkeyKey = "fala.hotkey"
+  static let engineKey = "fala.engine"
 
   /// Stored as a suite NAME rather than as a `UserDefaults` instance, for the
   /// reason `UserDefaultsInputDeviceStore` documents: `UserDefaults` is not
@@ -85,6 +92,23 @@ public struct UserDefaultsPreferencesStore: PreferencesStoring {
   public func saveHotkey(_ hotkey: Hotkey) {
     defaults.set(hotkey.rawValue, forKey: Self.hotkeyKey)
   }
+
+  public func loadEngine() -> TranscriptionEngineChoice {
+    // Falls back for the same reason `loadHotkey` does, and one more that
+    // matters here: an unrecognised value is what a build that DROPPED an engine
+    // reads back. Refusing to start over a preference would be bad; starting on
+    // an engine the user did not pick would be worse than starting on the
+    // documented default, which is what this returns.
+    guard
+      let raw = defaults.string(forKey: Self.engineKey),
+      let engine = TranscriptionEngineChoice(rawValue: raw)
+    else { return Preferences.defaultEngine }
+    return engine
+  }
+
+  public func saveEngine(_ engine: TranscriptionEngineChoice) {
+    defaults.set(engine.rawValue, forKey: Self.engineKey)
+  }
 }
 
 /// The observable façade the Ajustes window binds to (mockup: Ajustes › Geral).
@@ -112,8 +136,21 @@ public final class Preferences {
   /// it does not collide with a system shortcut.
   public nonisolated static let defaultHotkey: Hotkey = .rightOption
 
+  /// SPEC.md §2 is [CONFIRMED] on one engine for v1, and this is that engine.
+  ///
+  /// Ajustes › Modelo can move it, but only ever because the user asked: a
+  /// build that shipped with `.cohere` here would be a silent architectural
+  /// change wearing a preference's clothes, and it would send every fresh
+  /// install into a model download nobody consented to.
+  public nonisolated static let defaultEngine: TranscriptionEngineChoice = .parakeet
+
   public private(set) var showOverlay: Bool
   public private(set) var hotkey: Hotkey
+
+  /// Which `TranscriptionEngine` the next dictation should use. Holding it does
+  /// NOT make it true — see the type comment: the pipeline has to read this
+  /// when it builds the engine, and that is the lead's wiring.
+  public private(set) var engine: TranscriptionEngineChoice
 
   @ObservationIgnored private let store: any PreferencesStoring
 
@@ -121,6 +158,7 @@ public final class Preferences {
     self.store = store
     self.showOverlay = store.loadShowOverlay()
     self.hotkey = store.loadHotkey()
+    self.engine = store.loadEngine()
   }
 
   public func setShowOverlay(_ showOverlay: Bool) {
@@ -137,5 +175,11 @@ public final class Preferences {
     guard hotkey != self.hotkey else { return }
     self.hotkey = hotkey
     store.saveHotkey(hotkey)
+  }
+
+  public func setEngine(_ engine: TranscriptionEngineChoice) {
+    guard engine != self.engine else { return }
+    self.engine = engine
+    store.saveEngine(engine)
   }
 }

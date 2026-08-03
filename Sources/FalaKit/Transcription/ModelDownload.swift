@@ -28,6 +28,16 @@ import os
 /// transfer stops on request, the CoreML open does not.
 public enum ModelDownloadStage: Sendable, Equatable {
 
+  /// The model is ALREADY on disk and is being loaded into memory — for Cohere,
+  /// that includes the 97 s ANE warm-up.
+  ///
+  /// A separate stage because nothing is being fetched. Reported as "baixando",
+  /// selecting a model you already have looked like it was downloading all over
+  /// again, which is what was reported. Ranks BELOW `preparing` so that if bytes
+  /// do start moving (an on-disk copy that turns out to be incomplete) the real
+  /// download stages still take over.
+  case loading
+
   /// Asking HuggingFace which files exist. No bytes yet, so no percentage.
   case preparing
 
@@ -41,6 +51,35 @@ public enum ModelDownloadStage: Sendable, Equatable {
   /// `MLModel(contentsOf:)` is a synchronous call that runs to completion.
   case installing
 
+  /// Maps FluidAudio's own progress report onto this vocabulary.
+  ///
+  /// Kept here so the FluidAudio type never crosses into the presenters — and so
+  /// both engines report the same three stages regardless of which download API
+  /// they happen to use.
+  public init(_ progress: DownloadProgress) {
+    switch progress.phase {
+    case .listing:
+      self = .preparing
+    case .downloading(let completed, let total):
+      // MEASURED (2026-08-03): FluidAudio reports `fractionCompleted` as 0.000
+      // for this path and counts FILES, not bytes. One of those files is the
+      // encoder at several hundred MB, so the count sits at 1/21 for minutes.
+      //
+      // The file count is therefore the ONLY real signal, and it is coarse. It
+      // drives the bar, and the UI says "arquivo N de M" rather than a
+      // percentage — a bar frozen at 5% reads as broken, which is exactly what
+      // was reported; the same bar labelled "arquivo 1 de 21" reads as working
+      // on a big file.
+      self = .transferring(
+        ModelDownloadProgress(
+          receivedBytes: Int64(completed),
+          totalBytes: Int64(max(total, completed)),
+          unit: .files))
+    case .compiling:
+      self = .installing
+    }
+  }
+
   /// The progress value the existing `ModelBlock.downloading` renders.
   ///
   /// `preparing` and `installing` map to `.unknown`, whose `isDeterminate` is
@@ -53,13 +92,17 @@ public enum ModelDownloadStage: Sendable, Equatable {
   /// Whether "Cancelar" can still do anything. The view keeps the control
   /// visible-but-disabled rather than removing it, so it does not vanish under
   /// the pointer mid-download.
-  public var isCancellable: Bool { self != .installing }
+  /// `loading` is not cancellable for the same reason `installing` is not: it is
+  /// a synchronous CoreML open plus a warm-up inference, with no cancellation
+  /// check to reach.
+  public var isCancellable: Bool { self != .installing && self != .loading }
 
   /// Order of the stages. Reports arrive on an unspecified queue and are
   /// delivered to the main actor through independent tasks, so "later" has to be
   /// decided by content, not arrival.
   var rank: Int {
     switch self {
+    case .loading: return -1
     case .preparing: return 0
     case .transferring: return 1
     case .installing: return 2

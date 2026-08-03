@@ -25,6 +25,96 @@ public enum ModelReadiness: Sendable, Equatable {
   case incomplete(missing: [String])
 }
 
+/// What a COMPLETE download looks like for ONE engine's model directory.
+///
+/// This type exists because there are now two engines and one disk check. The
+/// check itself — "every required part exists, is non-empty, and the total is
+/// plausible" — is the same for both; what differs is the directory, the file
+/// names inside it, and how much of that is MEASURED rather than assumed.
+///
+/// ## Why the two engines are checked differently
+///
+/// `parakeet` names nine exact paths, because a real completed download was
+/// enumerated on this machine on 2026-08-02 and every one of them was seen.
+///
+/// `cohere` names its two bundles and its vocabulary — those come from
+/// FluidAudio's own `ModelNames.CohereTranscribe` — but it does NOT name the
+/// files inside a bundle, because no Cohere download has ever been measured
+/// here. Asserting `weights/weight.bin` on a bundle nobody has looked inside
+/// would risk telling a user with a perfectly good model to delete it, and the
+/// "delete and download again" advice would then loop forever. So a Cohere
+/// bundle is checked by SHAPE instead (`requiredBundles`): CoreML's own
+/// descriptor must be there, and the bundle must weigh more than a descriptor
+/// possibly can. Both errors that matter are still caught — a bare directory
+/// left by an interrupted download, and a bundle with no payload in it.
+public struct ModelLayout: Sendable, Equatable {
+
+  public let location: URL
+
+  /// Exact relative paths that must exist and be non-empty. Use this only for
+  /// files a real download was observed to contain.
+  public let requiredFiles: [String]
+
+  /// Compiled `.mlmodelc` bundles checked by shape rather than by name: each
+  /// must hold a non-empty `coremldata.bin` and weigh at least
+  /// `minimumBundlePayloadBytes`.
+  public let requiredBundles: [String]
+
+  /// Total-size floor for the whole directory, or `nil` when no complete
+  /// download of this model has ever been measured — in which case NO floor is
+  /// applied, rather than a guessed one.
+  public let minimumPlausibleBytes: Int64?
+
+  /// What a fresh download fetches, or `nil` when it has never been measured.
+  /// `nil` means the UI must not print a size, not that the size is zero.
+  public let expectedDownloadBytes: Int64?
+
+  public init(
+    location: URL,
+    requiredFiles: [String],
+    requiredBundles: [String] = [],
+    minimumPlausibleBytes: Int64?,
+    expectedDownloadBytes: Int64?
+  ) {
+    self.location = location
+    self.requiredFiles = requiredFiles
+    self.requiredBundles = requiredBundles
+    self.minimumPlausibleBytes = minimumPlausibleBytes
+    self.expectedDownloadBytes = expectedDownloadBytes
+  }
+
+  /// The same rules pointed at a different directory — how a test builds a
+  /// fixture without writing to the user's real model cache.
+  public func relocated(to location: URL) -> ModelLayout {
+    ModelLayout(
+      location: location,
+      requiredFiles: requiredFiles,
+      requiredBundles: requiredBundles,
+      minimumPlausibleBytes: minimumPlausibleBytes,
+      expectedDownloadBytes: expectedDownloadBytes)
+  }
+
+  /// Least a real compiled bundle can weigh.
+  ///
+  /// Not a measurement of any particular model: it is a floor chosen to sit far
+  /// above every descriptor file a `.mlmodelc` contains (the four measured
+  /// Parakeet descriptors are 485–554 bytes, `model.mil` a few hundred KB) and
+  /// far below any ASR encoder or decoder payload. Its only job is to tell
+  /// "the download wrote the descriptors and then died" apart from "the
+  /// download finished".
+  public static let minimumBundlePayloadBytes: Int64 = 1_000_000
+
+  /// FluidAudio 0.15.5's `parakeet-tdt-0.6b-v3` int8 layout, verified against a
+  /// real download on this machine on 2026-08-02.
+  public static var parakeet: ModelLayout {
+    ModelLayout(
+      location: ModelStatus.defaultLocation,
+      requiredFiles: ModelStatus.requiredFiles,
+      minimumPlausibleBytes: ModelStatus.minimumPlausibleBytes,
+      expectedDownloadBytes: ModelStatus.expectedDownloadBytes)
+  }
+}
+
 /// Whether the ASR model is actually on disk AND complete, so `doctor` and the
 /// menu bar can report readiness they have checked rather than readiness they
 /// assume.
@@ -132,7 +222,18 @@ public struct ModelStatus: Sendable, Equatable {
 
   // MARK: - Reading the disk
 
+  /// Reads the Parakeet model directory. Kept as the no-argument default so
+  /// every existing caller (and `doctor`) means what it always meant.
   public static func current(at location: URL = ModelStatus.defaultLocation) -> ModelStatus {
+    current(ModelLayout.parakeet.relocated(to: location))
+  }
+
+  /// Reads ONE engine's model directory, against that engine's own idea of
+  /// complete. Nothing here is shared between engines except the algorithm —
+  /// which is the point: a Cohere row must never be answered from Parakeet's
+  /// directory.
+  public static func current(_ layout: ModelLayout) -> ModelStatus {
+    let location = layout.location
     let fileManager = FileManager.default
     var isDirectory: ObjCBool = false
     guard
@@ -143,10 +244,15 @@ public struct ModelStatus: Sendable, Equatable {
     }
 
     let size = directorySize(of: location, using: fileManager)
-    let missing = requiredFiles.filter {
+    var missing = layout.requiredFiles.filter {
       !isNonEmptyFile(at: location.appendingPathComponent($0), using: fileManager)
     }
-    guard missing.isEmpty, size ?? 0 >= minimumPlausibleBytes else {
+    missing += layout.requiredBundles.filter {
+      !isLoadableBundle(at: location.appendingPathComponent($0), using: fileManager)
+    }
+    // `?? 0` is not a fallback default: a layout with no measured floor applies
+    // no floor at all, rather than a number nobody has verified.
+    guard missing.isEmpty, size ?? 0 >= (layout.minimumPlausibleBytes ?? 0) else {
       return ModelStatus(
         readiness: .incomplete(missing: missing), sizeBytes: size, location: location)
     }
@@ -211,6 +317,27 @@ public struct ModelStatus: Sendable, Equatable {
       let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize
     else { return false }
     return size > 0
+  }
+
+  /// A compiled bundle whose contents were never enumerated here, checked by
+  /// the two properties that hold for every `.mlmodelc` CoreML can open:
+  ///
+  /// 1. `coremldata.bin` — the descriptor `MLModel(contentsOf:)` reads first. It
+  ///    is a FILE, so requiring it rules out the bare directory an interrupted
+  ///    download leaves behind (the defect `ModelReadiness` exists to catch);
+  /// 2. a payload. FluidAudio writes each file to `<name>.partial` and renames
+  ///    it only once the transfer completes, so a truncated file never appears
+  ///    under its final name — which makes "the bundle weighs almost nothing"
+  ///    the shape of a download that stopped between files.
+  private static func isLoadableBundle(at url: URL, using fileManager: FileManager) -> Bool {
+    var isDirectory: ObjCBool = false
+    guard
+      fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
+      isDirectory.boolValue,
+      isNonEmptyFile(at: url.appendingPathComponent("coremldata.bin"), using: fileManager),
+      let size = directorySize(of: url, using: fileManager)
+    else { return false }
+    return size >= ModelLayout.minimumBundlePayloadBytes
   }
 
   private static func directorySize(of url: URL, using fileManager: FileManager) -> Int64? {

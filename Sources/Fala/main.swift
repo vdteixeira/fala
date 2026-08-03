@@ -159,10 +159,11 @@ func runListen(seconds: Double) async {
 
   do {
     let capture = try AudioCapture()
-    let engine = ParakeetEngine()
+    let choice = await MainActor.run { Preferences().engine }
+    let engine = choice.makeEngine()
     let dictionary = try? JargonDictionary.loadDefault()
 
-    say("Carregando o modelo (baixa ~480 MB na primeira vez)…")
+    say("Carregando o modelo de \(choice.displayName)…")
     try await engine.prepare()
 
     say("Gravando por \(Int(seconds))s — fale agora…")

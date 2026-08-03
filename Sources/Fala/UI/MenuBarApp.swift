@@ -68,9 +68,23 @@ final class MenuBarAppDelegate: NSObject, NSApplicationDelegate {
     // One store, shared: the pipeline writes to it and the popover reads from it.
     // Two instances would render an empty "Recentes" over a populated file.
     let history = DictationHistoryStore()
-    let presenter = MenuBarPresenter(dictation: dictation, history: history)
+    // ONE instance, shared by the pipeline, the popover and the settings window.
+    // Two would each hold their own engine and hotkey and silently disagree.
+    let preferences = Preferences()
+    // The SELECTED engine's readiness, not always Parakeet's. Reporting the
+    // wrong engine's directory is the same class of lie as the "pronto · Zero
+    // KB" that `ModelReadiness` was introduced to prevent.
+    let presenter = MenuBarPresenter(
+      dictation: dictation,
+      modelStatus: { ModelStatus.current(preferences.engine.modelLayout) },
+      // Read from the SAME preference as the status above. The name was a
+      // constant, so with Cohere selected the popover reported "Modelo Parakeet
+      // · pronto" over a directory it had measured in Cohere's folder.
+      engineName: { preferences.engine.shortName },
+      history: history)
     let pipeline = DictationPipeline(
-      presenter: presenter, dictation: dictation, history: history)
+      presenter: presenter, dictation: dictation, history: history,
+      preferences: preferences)
     self.pipeline = pipeline
 
     // T2.11 / T2.12. Both windows are built lazily on first open: constructing
@@ -113,7 +127,10 @@ final class DictationPipeline {
   private let dictation: DictationSwitch
   private var gate = CaptureGate()
   private var hotkey: HotkeyManager?
-  private var engine: ParakeetEngine?
+  /// `any TranscriptionEngine`, not `ParakeetEngine`: the user can pick the
+  /// engine in Ajustes › Modelo, and the whole point of the protocol is that
+  /// nothing above it needs to know which one is loaded.
+  private var engine: (any TranscriptionEngine)?
   /// Held for the process lifetime: the panel is the only surface that shows a
   /// failed or blocked dictation, and releasing it would take the window with it.
   private var overlay: PillOverlayController?
@@ -126,9 +143,10 @@ final class DictationPipeline {
   /// meter would put two `AVAudioEngine`s on one microphone — the stacked-instance
   /// failure recorded in docs/architecture.md.
   private var capture: AudioCapture?
-  /// One instance, shared with the settings window: two `Preferences` objects
-  /// would each hold their own copy of the hotkey and silently disagree.
-  let preferences = Preferences()
+  /// Injected, not built here: the popover and the settings window read the
+  /// same object, and two instances would silently disagree about the hotkey
+  /// and the engine.
+  let preferences: Preferences
   /// Retained so a hotkey change can re-point a fresh tap at the same flow.
   private var coordinator: DictationCoordinator?
   private var hotkeyTask: Task<Void, Never>?
@@ -144,11 +162,13 @@ final class DictationPipeline {
   init(
     presenter: MenuBarPresenter,
     dictation: DictationSwitch,
-    history: DictationHistoryStore
+    history: DictationHistoryStore,
+    preferences: Preferences
   ) {
     self.presenter = presenter
     self.dictation = dictation
     self.history = history
+    self.preferences = preferences
   }
 
   func start() {
@@ -162,6 +182,71 @@ final class DictationPipeline {
     hotkey = nil
     devices?.stop()
   }
+
+  /// Swaps the transcription engine (Ajustes › Modelo).
+  ///
+  /// Applies to the NEXT dictation: one already in flight keeps the engine it
+  /// started with, so a mid-utterance switch cannot produce a transcript stitched
+  /// from two models. Loading is deferred to `prepareModel`, which is also what
+  /// puts the first-run download behind the popover's "baixando" state.
+  func applyEngine(_ choice: TranscriptionEngineChoice) {
+    guard let coordinator else { return }
+    let engine = choice.makeEngine()
+    self.engine = engine
+    Task { await coordinator.setEngine(engine) }
+
+    // Reported to BOTH surfaces. The popover has always had a model block; the
+    // settings window is where the user actually clicked, and showing nothing
+    // there is what made picking an engine look like a no-op while a
+    // several-hundred-megabyte download was running.
+    // Decided ONCE, before anything starts: is this a download or just a load?
+    //
+    // FluidAudio runs its listing/`downloading(21/21)` sequence either way — with
+    // the files already there it is a existence check that completes instantly —
+    // so its stages cannot answer this. Reporting them verbatim made selecting
+    // an engine you already have look like it was re-fetching 4,98 GB, when the
+    // time was really Cohere's 97 s ANE warm-up.
+    let isInstalled = ModelStatus.current(choice.modelLayout).isPresent
+    if isInstalled {
+      presenter.reportModelLoading()
+    } else {
+      presenter.reportModelProgress(.unknown)
+    }
+    // The progress handler is called off the main actor, so it hops back rather
+    // than capturing `self` across isolation domains.
+    let report: @Sendable (ModelDownloadStage) -> Void = { [weak self] stage in
+      Task { @MainActor in
+        guard let self else { return }
+        guard !isInstalled else {
+          // Nothing is being fetched; the stages below would only misdescribe it.
+          self.presenter.reportModelLoading()
+          self.onEnginePreparation?(.loading)
+          return
+        }
+        // The popover's block only understands a byte-ish progress; the stage's
+        // own `progress` is `.unknown` outside `.transferring`, which draws an
+        // indeterminate bar instead of a frozen 0%.
+        self.presenter.reportModelProgress(stage.progress)
+        self.onEnginePreparation?(stage)
+      }
+    }
+
+    tasks.append(
+      Task { @MainActor [weak self] in
+        do {
+          try await engine.prepare(onStage: report)
+          self?.presenter.clearModelDownload()
+          self?.onEnginePreparationFinished?(nil)
+        } catch {
+          self?.presenter.reportModelFailure()
+          self?.onEnginePreparationFinished?(ModelPaneStrings.preparationFailed)
+        }
+      })
+  }
+
+  /// Set by `SettingsWindowBuilder` so the Modelo tab can draw the same bar.
+  var onEnginePreparation: (@MainActor (ModelDownloadStage) -> Void)?
+  var onEnginePreparationFinished: (@MainActor (String?) -> Void)?
 
   /// Reinstalls the event tap on a new key (Ajustes › Geral).
   ///
@@ -242,7 +327,7 @@ final class DictationPipeline {
 
       let capture = try AudioCapture(inputDevice: devices.captureSelection)
       self.capture = capture
-      let engine = ParakeetEngine()
+      let engine = preferences.engine.makeEngine()
       self.engine = engine
       // FR-9: the user's override file wins over the bundled default. Falls back
       // to the bundled dictionary when the user's file is unusable, so a typo in
@@ -269,6 +354,30 @@ final class DictationPipeline {
       self.overlay = overlay
 
       presenter.observe(await coordinator.states())
+
+      // The same status lines `Fala run` writes, from the mode people actually
+      // use. Without this a failed dictation in the menu-bar app left NO record
+      // anywhere: the pill shows the message for a few seconds and then it is
+      // gone, and nothing about a dictation may be logged in `FalaKit`. So the
+      // one report we could get was "an error appeared", with no way to tell
+      // which of six messages it was.
+      //
+      // States and messages only — never the transcript, never audio
+      // (CLAUDE.md). `DictationState` carries neither.
+      tasks.append(
+        Task { [states = await coordinator.states()] in
+          for await state in states {
+            switch state {
+            case .recording: say("● gravando…")
+            case .transcribing(let seconds):
+              say(String(format: "… transcrevendo (%.1fs capturados)", seconds))
+            case .success: say("✓ inserido")
+            case .failure(let message): say("✗ \(message)")
+            case .idle: break
+            }
+          }
+        })
+
       prepareModel(engine, allowDownload: false)
 
       // FR-1: honour the user's choice. This read used to be missing entirely,
@@ -315,8 +424,11 @@ final class DictationPipeline {
   /// silent multi-minute stall behind a popover that says nothing. Absent, the
   /// block reads "baixa no primeiro uso" and the first dictation pays the cost —
   /// the same contract `Fala doctor` already states.
-  private func prepareModel(_ engine: ParakeetEngine, allowDownload: Bool) {
-    let status = ModelStatus.current()
+  private func prepareModel(_ engine: any TranscriptionEngine, allowDownload: Bool) {
+    // The SELECTED engine's directory. Reading Parakeet's while Cohere is chosen
+    // would gate a download on the wrong model — and report "pronto" for one the
+    // user never fetched.
+    let status = ModelStatus.current(preferences.engine.modelLayout)
     // On a machine that has never run Fala the model is absent, and returning
     // here left the app in a state where EVERY dictation failed with "A
     // transcrição falhou." and the popover offered no way out — fatal for anyone
@@ -324,8 +436,17 @@ final class DictationPipeline {
     // popover has a "baixando" variant precisely for this.
     let mustFetch = !status.isPresent
     guard allowDownload || mustFetch || status.isPresent else { return }
-    if allowDownload || mustFetch {
+    // Reported even when nothing is downloaded. LOADING is the slow part now:
+    // Cohere's `prepare()` measures 97 s on a machine that already holds the
+    // model, because of the ANE warm-up, and it is paid at every launch. The
+    // condition here used to be `allowDownload || mustFetch`, so that whole
+    // minute and a half passed behind a popover saying nothing at all.
+    // Same distinction as `applyEngine`: at launch the model is usually already
+    // there, and the wait is the load, not a transfer.
+    if mustFetch {
       presenter.reportModelProgress(.unknown)
+    } else {
+      presenter.reportModelLoading()
     }
     tasks.append(
       Task { @MainActor [weak self] in

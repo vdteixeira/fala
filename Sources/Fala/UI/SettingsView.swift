@@ -54,6 +54,12 @@ struct SettingsActions {
   var hotkeyChanged: ((Hotkey) -> Void)?
   /// Called when "Mostrar overlay durante o ditado" is switched.
   var showOverlayChanged: ((Bool) -> Void)?
+  /// Called when the user picks a different transcription engine in Ajustes ›
+  /// Modelo. Leaving it nil is a SUPPORTED state, not an oversight — the pane's
+  /// caption then tells the user the change lands on the next launch instead of
+  /// claiming the running app adopted it. Wiring it is a promise that the
+  /// pipeline really does rebuild around the new engine.
+  var engineChanged: ((TranscriptionEngineChoice) -> Void)?
   /// Opens a URL in System Settings (the login-item deep link).
   var openURL: ((URL) -> Void)?
   /// Closes the window. Filled in by `SettingsWindowController`; it exists

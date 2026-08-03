@@ -646,7 +646,7 @@ private func makeStatus(present: Bool, bytes: Int64? = 1_100_000_000) -> ModelSt
     let unknown = ModelDownloadProgress.unknown
     #expect(!unknown.isDeterminate)
     #expect(unknown.detail.isEmpty)
-    #expect(ModelBlock.downloading(unknown).title == "Baixando modelo…")
+    #expect(ModelBlock.downloading(unknown).title(engine: "Parakeet v3") == "Baixando modelo…")
     #expect(ModelBlock.downloading(unknown).progressFraction == nil)
     #expect(ModelBlock.downloading(unknown).isDownloading)
   }
@@ -655,7 +655,7 @@ private func makeStatus(present: Bool, bytes: Int64? = 1_100_000_000) -> ModelSt
   func determinateDownloadIsLabelled() {
     let progress = ModelDownloadProgress(receivedBytes: 620_000_000, totalBytes: 1_100_000_000)
     let block = ModelBlock.downloading(progress)
-    #expect(block.title == "Baixando modelo… 56%")
+    #expect(block.title(engine: "Parakeet v3") == "Baixando modelo… 56%")
     // The byte formatting follows the machine's locale, so only the shape of the
     // string is pinned here.
     #expect(block.detail.contains(" de "))
@@ -666,7 +666,9 @@ private func makeStatus(present: Bool, bytes: Int64? = 1_100_000_000) -> ModelSt
   func blockReadsTheDisk() {
     #expect(ModelBlock.onDisk(makeStatus(present: true)) != .pending)
     #expect(ModelBlock.onDisk(makeStatus(present: false)) == .pending)
-    #expect(ModelBlock.onDisk(makeStatus(present: true)).title == "Modelo Parakeet · pronto")
+    #expect(
+      ModelBlock.onDisk(makeStatus(present: true)).title(engine: "Parakeet")
+        == "Modelo Parakeet · pronto")
     #expect(ModelBlock.onDisk(makeStatus(present: true)).detail.hasSuffix("local"))
   }
 
@@ -763,14 +765,47 @@ private func makeStatus(present: Bool, bytes: Int64? = 1_100_000_000) -> ModelSt
     granted: Set<Permission> = [.microphone, .accessibility],
     modelPresent: Bool = true,
     recents: any RecentTranscriptionsProviding = StubRecents(),
-    enabled: Bool = true
+    enabled: Bool = true,
+    engine: TranscriptionEngineChoice = .parakeet
   ) -> MenuBarPresenter {
     MenuBarPresenter(
       dictation: DictationSwitch(store: MockDictationStore(stored: enabled)),
       permissions: MockPermissionChecker(granted: granted),
       modelStatus: { makeStatus(present: modelPresent) },
+      engineName: { engine.shortName },
       history: recents,
       clock: { Date(timeIntervalSince1970: 1_000_000) })
+  }
+
+  /// Reported as "na tela de destaque aparece Parakeet e vem de Cohere": the
+  /// block's name was the constant "Parakeet" while the status under it was
+  /// measured in the SELECTED engine's directory. A row whose two halves
+  /// describe different engines is worse than either half being wrong — it reads
+  /// as the engine switch having silently failed.
+  @Test("The model block names the engine actually selected")
+  func modelBlockNamesTheSelectedEngine() async {
+    let cohere = makePresenter(engine: .cohere)
+    await cohere.refresh()
+    #expect(cohere.modelTitle.contains("Cohere"))
+    #expect(!cohere.modelTitle.contains("Parakeet"))
+
+    let parakeet = makePresenter(engine: .parakeet)
+    await parakeet.refresh()
+    #expect(parakeet.modelTitle.contains("Parakeet"))
+  }
+
+  /// Every state that names a model must follow the selection, not just the
+  /// happy one — a failed Cohere download reporting "Falha ao baixar o modelo
+  /// Parakeet" would send the user to delete the wrong directory.
+  @Test("Pending and failed blocks name the selected engine too")
+  func everyNamedStateFollowsTheSelection() async {
+    let presenter = makePresenter(modelPresent: false, engine: .cohere)
+    await presenter.refresh()
+    #expect(presenter.modelTitle.contains("Cohere"))
+
+    presenter.reportModelFailure()
+    #expect(presenter.modelTitle.contains("Cohere"))
+    #expect(!presenter.modelTitle.contains("Parakeet"))
   }
 
   @Test("a healthy machine shows no banner")
@@ -808,7 +843,7 @@ private func makeStatus(present: Bool, bytes: Int64? = 1_100_000_000) -> ModelSt
     presenter.clearModelDownload()
     #expect(presenter.model != .failed)
     await presenter.refresh()
-    #expect(presenter.model.title == "Modelo Parakeet · pronto")
+    #expect(presenter.modelTitle == "Modelo Parakeet · pronto")
   }
 
   @Test("a reported progress replaces the disk reading while it runs")
@@ -826,6 +861,7 @@ private func makeStatus(present: Bool, bytes: Int64? = 1_100_000_000) -> ModelSt
       dictation: DictationSwitch(store: MockDictationStore(stored: true)),
       permissions: MockPermissionChecker(granted: []),
       modelStatus: { makeStatus(present: false) },
+      engineName: { TranscriptionEngineChoice.parakeet.shortName },
       history: provider,
       recentsLimit: 500)
     await presenter.refresh()
@@ -884,6 +920,7 @@ private func makeStatus(present: Bool, bytes: Int64? = 1_100_000_000) -> ModelSt
       dictation: DictationSwitch(store: MockDictationStore(stored: true)),
       permissions: MockPermissionChecker(granted: []),
       modelStatus: { makeStatus(present: false) },
+      engineName: { TranscriptionEngineChoice.parakeet.shortName },
       history: provider,
       recentsLimit: 0)
     await presenter.refresh()
@@ -901,6 +938,7 @@ private func makeStatus(present: Bool, bytes: Int64? = 1_100_000_000) -> ModelSt
       dictation: DictationSwitch(store: MockDictationStore(stored: true)),
       permissions: MockPermissionChecker(granted: []),
       modelStatus: { makeStatus(present: false) },
+      engineName: { TranscriptionEngineChoice.parakeet.shortName },
       history: StubRecents(entries: entries),
       recentsLimit: -10)
     await presenter.refresh()

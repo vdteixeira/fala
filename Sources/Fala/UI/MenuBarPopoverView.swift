@@ -64,7 +64,10 @@ struct MenuBarPopoverView: View {
       header
       banner
       failureNotice
-      ModelBlockView(block: presenter.model, retry: actions.retryModelDownload)
+      ModelBlockView(
+        block: presenter.model,
+        title: presenter.modelTitle,
+        retry: actions.retryModelDownload)
         .padding(.horizontal, theme.space.md)
         .padding(.bottom, theme.space.xs)
       recentsSection
@@ -366,6 +369,9 @@ private struct ModelBlockView: View {
   @Environment(\.theme) private var theme
 
   let block: ModelBlock
+  /// Already resolved by the presenter, so this view cannot pick the wrong
+  /// engine's name for the status sitting next to it.
+  let title: String
   let retry: (() -> Void)?
 
   var body: some View {
@@ -375,7 +381,7 @@ private struct ModelBlockView: View {
         Image(systemName: block.symbol)
           .imageScale(.medium)
           .foregroundStyle(style.tint)
-        Text(block.title)
+        Text(title)
           .font(MenuBarType.blockTitle.font)
           .foregroundStyle(theme.color.text.primary)
           .fixedSize(horizontal: false, vertical: true)

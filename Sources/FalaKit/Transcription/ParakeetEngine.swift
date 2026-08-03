@@ -10,13 +10,19 @@ import Foundation
 /// into FalaKit's public API, or the `TranscriptionEngine` seam that keeps the
 /// WhisperKit fallback alive (SPEC.md FR-5) would leak.
 protocol ParakeetModelLoading: Sendable {
-  func loadManager() async throws -> AsrManager
+  func loadManager(
+    onStage: @escaping @Sendable (ModelDownloadStage) -> Void
+  ) async throws -> AsrManager
 }
 
 /// Production loader: Parakeet TDT v3 on CoreML/ANE (SPEC.md FR-6).
 struct FluidAudioModelLoader: ParakeetModelLoading {
-  func loadManager() async throws -> AsrManager {
-    let models = try await AsrModels.downloadAndLoad(version: .v3)
+  func loadManager(
+    onStage: @escaping @Sendable (ModelDownloadStage) -> Void
+  ) async throws -> AsrManager {
+    let models = try await AsrModels.downloadAndLoad(
+      version: .v3,
+      progressHandler: { progress in onStage(ModelDownloadStage(progress)) })
     // NOT `.default`. FluidAudio 0.15.5's own documentation on `melChunkContext`
     // (ASR/Parakeet/AsrTypes.swift) says the 80 ms mel-context prepend can shift
     // the encoder's first-frame distribution enough that the TDT decoder "drifts
@@ -76,7 +82,13 @@ public actor ParakeetEngine: TranscriptionEngine {
   /// path, which is why `transcribe` throws `.notReady` rather than loading
   /// lazily.
   public func prepare() async throws {
-    _ = try await loadedManager()
+    _ = try await loadedManager(onStage: { _ in })
+  }
+
+  public func prepare(
+    onStage: @escaping @Sendable (ModelDownloadStage) -> Void
+  ) async throws {
+    _ = try await loadedManager(onStage: onStage)
   }
 
   public func transcribe(_ audio: AudioBuffer, biasTerms: [String]) async throws -> Transcript {
@@ -100,9 +112,7 @@ public actor ParakeetEngine: TranscriptionEngine {
     // for the English-jargon losses GATE S0 measured.
     _ = biasTerms
 
-    guard let manager else {
-      throw TranscriptionError.notReady
-    }
+    let manager = try await readyManager()
 
     // Fresh decoder state per utterance: v1 is batch and every hotkey press is
     // an independent utterance, so carrying state over would bleed the previous
@@ -142,19 +152,41 @@ public actor ParakeetEngine: TranscriptionEngine {
 
   // MARK: - Loading
 
-  private func loadedManager() async throws -> AsrManager {
+  /// The manager, WAITING for an in-flight `prepare()` rather than failing.
+  ///
+  /// Loading is fast here once the model is on disk (~1 s), so the window is
+  /// narrow — but on a first run it is a 461 MB download, and a user who
+  /// launches the app and immediately dictates should get their utterance late
+  /// rather than lose it to an error. `CohereEngine` has the same rule for the
+  /// same reason, where the window is 97 s.
+  ///
+  /// A load that was NEVER started still throws: `prepare()` exists precisely so
+  /// the hotkey path never triggers a download.
+  private func readyManager() async throws -> AsrManager {
+    if let manager { return manager }
+    guard loadTask != nil else { throw TranscriptionError.notReady }
+    return try await loadedManager(onStage: { _ in })
+  }
+
+  private func loadedManager(
+    onStage: @escaping @Sendable (ModelDownloadStage) -> Void
+  ) async throws -> AsrManager {
     if let manager { return manager }
 
     if let loadTask {
       // A load is already in flight — join it rather than downloading twice.
       do {
-        return try await loadTask.value
+        let loaded = try await loadTask.value
+        // Cache it here too: only the caller that CREATED the task stored the
+        // result, so a joiner returned a manager the actor immediately forgot.
+        manager = loaded
+        return loaded
       } catch {
         throw Self.mapModelFailure(error)
       }
     }
 
-    let task = Task { [loader] in try await loader.loadManager() }
+    let task = Task { [loader] in try await loader.loadManager(onStage: onStage) }
     loadTask = task
     do {
       let loaded = try await task.value

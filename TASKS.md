@@ -27,7 +27,11 @@ the decision.
 - [ ] S0.3 Run harness, record decision in SPEC.md §6 (Spike 0 row).
       DoD: aggregate WER number + engine decision written down.
       **Run 1 recorded — gate NOT closed; see SPEC.md §6.**
-**GATE S0:** engine decision (Parakeet stays / WhisperKit evaluation) approved by human.
+**GATE S0:** engine decision approved by human. The harness now measures BOTH
+Parakeet v3 and Cohere Transcribe on the same audio and prints which wins on the
+jargon-bearing subset — `swift run FalaSpike spike/audio`. WhisperKit was
+evaluated and set aside: same language-forcing capability, but 7 new transitive
+dependencies against Cohere's zero (see docs/architecture.md).
 Run 1 did not close it. Also pending the human's ruling on whether the NFR-2 WER
 threshold applies to the aggregate or to the jargon-bearing subset.
 

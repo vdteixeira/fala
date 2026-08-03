@@ -122,12 +122,28 @@ public struct DictationFailureNotice: Sendable, Equatable {
 
 /// Download progress, as a value so the percentage arithmetic is testable.
 public struct ModelDownloadProgress: Sendable, Equatable {
+
+  /// What the two numbers count.
+  ///
+  /// FluidAudio reports FILES for the Cohere path (measured: `fractionCompleted`
+  /// is always 0.000 there, and the count sits at 1/21 for minutes while the
+  /// several-hundred-MB encoder transfers). Rendering that as bytes produced
+  /// "1 byte de 21 bytes"; rendering it as a percentage produced a bar frozen at
+  /// 5%, which reads as broken. Naming the unit lets the UI say "arquivo 1 de
+  /// 21", which reads as working on something big.
+  public enum Unit: Sendable, Equatable {
+    case bytes
+    case files
+  }
+
   public let receivedBytes: Int64
   public let totalBytes: Int64
+  public let unit: Unit
 
-  public init(receivedBytes: Int64, totalBytes: Int64) {
+  public init(receivedBytes: Int64, totalBytes: Int64, unit: Unit = .bytes) {
     self.receivedBytes = receivedBytes
     self.totalBytes = totalBytes
+    self.unit = unit
   }
 
   /// 0...1. Never NaN and never above 1: the progress bar's width is bound to
@@ -153,7 +169,12 @@ public struct ModelDownloadProgress: Sendable, Equatable {
   /// already uses for the ready state.
   public var detail: String {
     guard isDeterminate else { return "" }
-    return "\(Self.format(receivedBytes)) de \(Self.format(totalBytes))"
+    switch unit {
+    case .bytes:
+      return "\(Self.format(receivedBytes)) de \(Self.format(totalBytes))"
+    case .files:
+      return "arquivo \(max(receivedBytes, 1)) de \(totalBytes)"
+    }
   }
 
   static func format(_ bytes: Int64) -> String {
@@ -175,22 +196,43 @@ public struct ModelDownloadProgress: Sendable, Equatable {
 public enum ModelBlock: Sendable, Equatable {
   case ready(detail: String)
   case downloading(ModelDownloadProgress)
+  /// Already on disk, being loaded into memory. Distinct from `downloading`
+  /// because nothing is being fetched — see `ModelDownloadStage.loading`.
+  case loading
   case pending
   case failed
 
-  /// Product name as the mockup writes it (`modelName`, default "Parakeet").
+  /// Product name as the mockup writes it. Still the DEFAULT, because Parakeet
+  /// is the [CONFIRMED] default engine — but no longer the only possible answer.
   public static let modelName = "Parakeet"
 
-  public var title: String {
+  /// The block's headline, naming the engine it is actually reporting on.
+  ///
+  /// `engine` is a PARAMETER because this string used to hardcode "Parakeet":
+  /// with Cohere selected the popover read "Modelo Parakeet · pronto" over a
+  /// status measured in Cohere's directory. The status was right and the name
+  /// was wrong, which is worse than either being wrong alone — it looked like
+  /// the engine switch had not taken effect.
+  ///
+  /// Pass `TranscriptionEngineChoice.displayName`; there is no default, so a new
+  /// call site cannot silently reintroduce the constant.
+  public func title(engine: String) -> String {
     switch self {
     case .ready:
-      return "Modelo \(Self.modelName) · pronto"
+      return "Modelo \(engine) · pronto"
     case .downloading(let progress):
-      return progress.isDeterminate ? "Baixando modelo… \(progress.percent)%" : "Baixando modelo…"
+      guard progress.isDeterminate else { return "Baixando modelo…" }
+      // No percentage for file counts: 1 of 21 is 5% for as long as the biggest
+      // file takes, and a number that sits still is worse than no number.
+      return progress.unit == .files
+        ? "Baixando modelo…"
+        : "Baixando modelo… \(progress.percent)%"
+    case .loading:
+      return "Carregando o modelo \(engine)…"
     case .pending:
-      return "Modelo \(Self.modelName) · baixa no primeiro uso"
+      return "Modelo \(engine) · baixa no primeiro uso"
     case .failed:
-      return "Falha ao baixar o modelo \(Self.modelName)"
+      return "Falha ao baixar o modelo \(engine)"
     }
   }
 
@@ -202,7 +244,7 @@ public enum ModelBlock: Sendable, Equatable {
       return detail.isEmpty ? "" : "\(detail) local"
     case .downloading(let progress):
       return progress.detail
-    case .pending, .failed:
+    case .loading, .pending, .failed:
       return ""
     }
   }
@@ -210,6 +252,9 @@ public enum ModelBlock: Sendable, Equatable {
   public var symbol: String {
     switch self {
     case .ready: return FalaSymbol.processor
+    // The processor symbol, not the download arrow: nothing is being fetched,
+    // and the arrow is what made this read as a second download.
+    case .loading: return FalaSymbol.processor
     case .downloading, .pending: return FalaSymbol.download
     case .failed: return FalaSymbol.error
     }
@@ -220,7 +265,7 @@ public enum ModelBlock: Sendable, Equatable {
   public var stateKind: StateKind {
     switch self {
     case .ready: return .success
-    case .downloading: return .transcribing
+    case .downloading, .loading: return .transcribing
     case .pending: return .idle
     case .failed: return .error
     }
@@ -234,6 +279,13 @@ public enum ModelBlock: Sendable, Equatable {
   public var isDownloading: Bool {
     if case .downloading = self { return true }
     return false
+  }
+
+  /// Whether the block is showing work in progress of any kind — a transfer OR a
+  /// load. `isDownloading` deliberately stays narrow: callers that mean "bytes
+  /// are moving" must not accidentally catch a load.
+  public var isBusy: Bool {
+    self == .loading || isDownloading
   }
 
   /// `nil` while a download is running with no size yet — the view then draws an

@@ -453,3 +453,288 @@ different forms: a value read ONCE at construction from a source that can change
 later. `HotkeyManager`, `DictationCoordinator.dictionary` and the pill's keycap
 were all built this way. When a preference exists, grep for every reader of its
 default before declaring the feature wired.
+
+## Second engine: Cohere Transcribe (2026-08-03)
+SPEC.md FR-5's "future fallback" slot is filled — but with Cohere, not WhisperKit.
+1024 tests / 109 suites.
+
+**Why Cohere and not WhisperKit.** Both force the language in the decoder prefill,
+which is the one thing Parakeet cannot do (FR-7: FluidAudio's `language` on the
+Parakeet path is a Latin-vs-Cyrillic SCRIPT filter and cannot separate pt from
+en). The difference is cost. WhisperKit was evaluated by building it: it resolves
+at 0.18.0 via `argmax-oss-swift`, targets macOS 14+, compiles against this
+toolchain, and `DecodingOptions(language: "pt", usePrefillPrompt: true)` really
+does force the language — verified by compiling and running it. But it brings
+**7 transitive dependencies** (swift-transformers, swift-jinja, swift-collections,
+swift-crypto, swift-asn1, yyjson, swift-argument-parser) against the ONE this
+project pins today, and a ~954 MB model. Cohere Transcribe ships inside the
+FluidAudio version already pinned and audited, and its `promptSequence` injects
+`<|pt|>` twice into the decoder prompt — the same mechanism, no new supply chain.
+
+**Parakeet stays the default** (SPEC.md §2 is [CONFIRMED] on one engine for v1).
+Cohere is selectable in Ajustes › Modelo so the choice can be made on measured
+evidence rather than on argument.
+
+### A download-path bug worth remembering
+`ModelHub.download(_:to:)` takes the CACHE ROOT and appends the repo's own
+`folderName`. For this repo the LOCAL folder (`cohere-transcribe/q8`) differs from
+the REMOTE path (`cohere-transcribe-03-2026-coreml/q8`) — so a hand-written
+constant made every first run download the model successfully and then fail to
+find it, forever. `modelDirectory` is now DERIVED from
+`Repo.cohereTranscribeCoreml.folderName`, and a test fails if the two diverge
+again. Two agents found this independently while wiring different call sites.
+
+### The spike measures the shipping engines, not copies
+`FalaSpike` now links `FalaKit` and drives `TranscriptionEngine` directly through
+one `ShippingSpikeEngine` adapter. It previously re-created each engine's
+FluidAudio configuration by hand, with a "must match ParakeetEngine" comment — and
+the gate decides which engine ships, so measuring a lookalike would let the two
+drift on exactly the settings that matter (`melChunkContext`, forced language,
+decoder variant). Regression check: after the rewrite AND after the switch to
+delegation, `--engines parakeet` still reproduces SPEC.md §6 Run 1 exactly
+(11.4% aggregate, 13.8% code-switching, the same seven lost terms).
+
+### Still unmeasured
+Nobody has run Cohere. Its model has never been downloaded on this machine, so its
+size, latency and PT-BR accuracy are all unknown — which is why the settings copy
+says "ainda não foi medida" and states no speed, and why `ModelLayout.cohere`
+carries `nil` sizes. Running `swift run FalaSpike spike/audio` is what turns this
+from an argument into a decision.
+
+### Selecting an engine looked like a no-op (2026-08-03)
+Reported from real use: picking Cohere in Ajustes did nothing visible while a
+several-hundred-megabyte download was in fact running. Three gaps, in order of
+how far the progress got:
+
+1. **It did not exist.** `FluidAudioCohereLoader` never passed a `progressHandler`
+   to `ModelHub.download`, so there was no progress to show. `ParakeetEngine` had
+   the same hole in `AsrModels.downloadAndLoad`.
+2. **The protocol had nowhere to put it.** `TranscriptionEngine.prepare()` reports
+   nothing. Added `prepare(onStage:)` with a default implementation that forwards
+   to `prepare()`, so a test double does not have to grow a download story.
+   FluidAudio's `DownloadProgress` is mapped to the existing `ModelDownloadStage`
+   inside FalaKit, so the third-party type never reaches a presenter and both
+   engines report the same three stages regardless of which download API they use.
+3. **It went to the wrong window.** `prepareModel` reported to the menu-bar
+   presenter — the popover — while the click happened in the settings window.
+   `DictationPipeline` now reports to both.
+
+One detail that matters more than it looks: the bar is shown on the CLICK, not on
+the first progress callback. HuggingFace takes seconds to answer, and the whole
+complaint was about that silence. `ModelPanePresenter.selectEngine` sets
+`.preparing` immediately when the chosen model is absent, and two tests pin both
+the appearance and the clearing.
+
+Note FluidAudio counts FILES, not bytes, in `.downloading(completed:total:)`. The
+fraction it computes drives the bar; reporting file counts as bytes would draw
+something that jumps in big steps and lies about how much is left.
+
+### "Preparando" forever — the download was fine, the UI was frozen (2026-08-03)
+Reported: selecting Cohere sat on "preparando" and never started downloading.
+Measured with a throwaway probe against the real endpoint:
+
+```
+  0.0s  listing
+  5.1s  downloading(completedFiles: 0, totalFiles: 21)   frac=0.000
+  5.1s  downloading(completedFiles: 1, totalFiles: 21)   frac=0.000
+  7.0s  downloading(completedFiles: 1, totalFiles: 21)   frac=0.000   ← stays here
+```
+
+The download was working. Three findings, none of them what the symptom suggested:
+
+1. **The UI was never told.** `enginePreparation` and `enginePreparationFailure`
+   were declared `@ObservationIgnored`, copying the annotation the type's injected
+   collaborators use. `@Observable` therefore excluded them, SwiftUI never
+   re-rendered, and the tab stayed on the first state it drew — `.preparing`.
+   That single annotation is the whole reported bug.
+2. **`fractionCompleted` is always 0.000 on this path**, so the fraction FluidAudio
+   computes is useless here. File counts are the only real signal.
+3. **File counts are coarse and were being rendered as bytes.** One of the 21
+   files is the encoder at several hundred MB, so the count sits at 1/21 for
+   minutes — and `ModelDownloadProgress.detail` formats with `ByteCountFormatter`,
+   so it would have read "1 byte de 21 bytes". `ModelDownloadProgress` now carries
+   a `Unit` (bytes | files): file progress renders "arquivo 1 de 21" and shows no
+   percentage, because a number frozen at 5% reads as broken while a file count
+   reads as working on something big.
+
+Listing genuinely takes ~5 s, which is why the bar is shown on the CLICK rather
+than on the first callback.
+
+### What choosing Cohere actually costs (measured 2026-08-03, M3 Pro)
+
+The engine picker previously said Cohere's speed and size "have not been measured
+here". Both are measured now, over the same six GATE S0 fixtures.
+
+| | Parakeet TDT v3 | Cohere Transcribe |
+|---|---|---|
+| latency per utterance | 113–144 ms | 3,3–4,7 s |
+| first utterance in a process | 144 ms | **92 s** (see below) |
+| on disk | 461 MB | 4,98 GB (4 984 768 322 bytes, 21 files) |
+| code-switching WER | 13,8 % | 5,2 % |
+| jargon terms lost | 7 | 1 |
+
+Three consequences:
+
+1. **Cohere is ~30× slower.** That is not a footnote for a push-to-talk app: 3,4 s
+   of holding still after releasing the key is a different product from 0,1 s.
+   `TranscriptionEngineChoice.summary` now says so in the picker, in those words,
+   and a test forbids the string "rápido" appearing next to this engine.
+2. **The first inference in a process cost 92 s** — a per-process ANE warm-up, not
+   a one-time compile; three separate runs each paid it. Left alone, the user would
+   select Cohere, sit through a 5 GB download, press the hotkey and watch the pill
+   say "transcrevendo" for a minute and a half. `CohereEngine` now warms up with
+   one second of silence at the END of loading, while the settings pane is still
+   showing progress. Measured after: first utterance 3,3 s, output byte-identical.
+3. **The download is 4,98 GB, and roughly half of it is never opened.** FluidAudio
+   fetches the `.mlpackage` AND the pre-compiled `.mlmodelc` for three models; this
+   app loads two `.mlmodelc`. Upstream packaging, not something to trim here — so
+   the user is quoted the number they actually pay.
+
+Accuracy is deliberately NOT in the picker. Cohere is well ahead on the numbers
+above, but they come from 70 reference words with two self-graded fixtures. GATE S0
+is open precisely because that cannot support a claim.
+
+#### Two bugs this measurement exposed
+
+**`ModelPane.selectEngine` read the filesystem directly**, via
+`ModelStatus.current(choice.modelLayout)`, while every row on the same tab rendered
+from the injected `engineStatus` map. So the click could disagree with the display —
+and the test covering that line passed or failed depending on whether the
+developer's own `~/Library/Application Support` happened to hold a Cohere cache.
+It passed for weeks; it broke the moment the spike downloaded the model. Now it
+reads the same map the rows do.
+
+That is the project's recurring pattern in a new dress: not "a value read once from
+a source that can change later", but **a value read from a source OTHER than the one
+the rest of the type reads**. Both produce a UI that contradicts itself.
+
+**The download sheet hardcoded "4,7 GB"** — a `du -h` reading, so GiB — next to a
+status line that formats the same directory in decimal GB as "4,98 GB". Two numbers
+for one thing in one window. The sheet now formats
+`ModelLayout.expectedDownloadBytes` with the same formatter `ModelStatus` uses.
+
+### "Aparece uma mensagem de erro depois da transcrição" (2026-08-03)
+
+Reported with Cohere selected. The message was the pill's catch-all, "A
+transcrição falhou.", and the cause was the warm-up added earlier the same day.
+
+`CohereEngine.prepare()` timed end to end on a machine that ALREADY holds the
+4,98 GB model:
+
+```
+   0.0s  preparing
+   3.9s  installing        ← bytes present, CoreML opening the bundles
+   8.8s  installing        ← warm-up inference starts
+  97.1s  prepare() returns
+  1.84s  first real transcribe
+```
+
+**97 seconds, at every launch** — 88 s of it the ANE warm-up. Moving that cost
+into `prepare()` was right (it lands in the background instead of on the first
+dictation), but it opened a 97-second window in which `models` was nil, and
+`transcribe` answered that with `throw .notReady`. Hold the hotkey inside that
+window and the utterance was lost to an error, having done nothing wrong.
+
+Four fixes, in order of how much each one mattered:
+
+1. **`transcribe` now JOINS an in-flight `prepare()` instead of failing fast.**
+   Waiting is legible — the pill already says "transcrevendo" — and losing the
+   utterance is not. A transcription with no preparation *ever started* still
+   throws `.notReady`: turning the hotkey path into a lazy 4,98 GB download is
+   the thing `prepare()` exists to prevent. Applied to `ParakeetEngine` too,
+   where the same window exists at 461 MB on a first run.
+2. **The four `TranscriptionError` cases now have four messages.** They all
+   arrived as "A transcrição falhou.". A model that never downloaded and an
+   utterance too short to decode need opposite actions from the user, and since
+   nothing about a dictation may be logged, if the pill does not distinguish
+   them then nothing does. That is why this report could only say "an error
+   appeared".
+3. **The menu-bar app now writes dictation states to `fala.log`**, the same
+   status lines `Fala run` already wrote. Only the CLI did; the mode people
+   actually use left no record at all. States and messages only — never the
+   transcript, never audio.
+4. **The popover reports preparation even when nothing is downloaded.** The
+   condition was `allowDownload || mustFetch`, so with the model already present
+   the whole 97 s passed behind a popover saying nothing.
+
+A joiner also never cached its result — only the caller that created the load
+task stored it, so a second caller got models the actor immediately forgot.
+Fixed in both engines.
+
+**Is the warm-up still worth it?** Yes, and the reason is where the wait lands,
+not how long it is. Without it the cost is identical but always falls on the
+first dictation. With it, a user who dictates a couple of minutes after launch
+never sees it at all — and one who dictates immediately now waits instead of
+failing. The picker states the recurring 1,5 min, because a minute and a half of
+silence at every start would otherwise read as a broken app.
+
+### The popover named the wrong engine (2026-08-03)
+
+Reported as "na tela de destaque aparece Parakeet e vem de Cohere". With Cohere
+selected the popover read **"Modelo Parakeet · pronto"** — over a status measured
+in Cohere's directory. The status was right; only the name was wrong, which is
+worse than either half being wrong alone: it reads as the engine switch having
+silently failed, when it had in fact worked.
+
+`ModelBlock.title` interpolated `static let modelName = "Parakeet"` into three of
+its four cases. `title` is now `title(engine:)` with **no default**, and
+`MenuBarPresenter` resolves the name through the same closure it reads the status
+from, so the two halves cannot describe different engines.
+
+`TranscriptionEngineChoice.shortName` exists because `displayName` ("Parakeet
+v3", "Cohere Transcribe") would stretch the popover row onto a second line, and
+DESIGN.md makes the mockup the authority on visuals — the mockup's string is
+"Modelo Parakeet · pronto", which `shortName` reproduces exactly for the default
+engine.
+
+**Ajustes › Modelo was deliberately NOT changed.** Its top row shows Parakeet's
+directory and its button runs `AsrModels.download(version: .v3)`, so it manages
+that engine and no other; making its title follow the selection would put
+Cohere's name over Parakeet's status and a button that re-downloads Parakeet. The
+title now derives from `TranscriptionEngineChoice.parakeet.displayName` so the
+intent is stated at the source rather than left as a bare constant.
+
+#### The default parameter was the actual hazard
+
+`engineName` first shipped with `= { ModelBlock.modelName }`. Deleting the wiring
+in `MenuBarApp` then **still compiled and still passed all 1037 tests** — the
+tests inject their own name — so the popover would have quietly reverted to
+"Parakeet" over Cohere. Removing the default makes the compiler the guard:
+dropping the wiring is now a build error at `MenuBarApp.swift:84`, verified by
+doing it.
+
+This is the third form of the project's recurring defect. First it was "a value
+read ONCE at construction from a source that can change later". Then "a value
+read from a source OTHER than the one the rest of the type reads". Now: **a
+default that makes forgetting to wire something look like success.** All three
+produce a UI that contradicts itself, and only the third is preventable by the
+type system — so it should be.
+
+### Selecting an installed model looked like re-downloading it (2026-08-03)
+
+Reported: "quando seleciono um modelo que já foi baixado ele fica processando
+como se tivesse baixando novamente."
+
+It was not re-downloading. Two separate reasons it looked like it was:
+
+1. **FluidAudio runs its listing → `downloading(21/21)` sequence either way.**
+   With the files already present that is an existence check that completes
+   instantly, but the stages it emits are the same ones a real transfer emits.
+   Reported verbatim, they rendered as "Baixando modelo…".
+2. **The wait after that is real, and it is not a transfer.** For Cohere it is
+   the 97 s ANE warm-up. So the user saw a download bar, for a minute and a half,
+   over a model already on disk.
+
+`ModelDownloadStage.loading` and `ModelBlock.loading` now name that state:
+"Carregando o modelo…", the processor symbol instead of the download arrow, an
+indeterminate bar, no byte detail, and not cancellable (there is no transfer to
+stop, and the CoreML open plus warm-up have no cancellation check to reach).
+
+The download-or-load question is answered **once, before anything starts**, from
+`ModelStatus.isPresent` — FluidAudio's own stages cannot answer it, per (1).
+`loading` ranks BELOW `preparing` in `supersedes`, so an on-disk copy that turns
+out to be incomplete still hands over to the real download stages.
+
+`ModelBlock.isDownloading` deliberately stays narrow — a caller that means "bytes
+are moving" must not catch a load — so `isBusy` was added for callers that mean
+"work in progress of any kind".

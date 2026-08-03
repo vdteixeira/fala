@@ -446,7 +446,9 @@ private actor FakeModelLoader: ParakeetModelLoading {
 
   var loadCount: Int { callCount }
 
-  func loadManager() async throws -> AsrManager {
+  func loadManager(
+    onStage: @escaping @Sendable (ModelDownloadStage) -> Void
+  ) async throws -> AsrManager {
     callCount += 1
     resumeArrivalWaiters()
 

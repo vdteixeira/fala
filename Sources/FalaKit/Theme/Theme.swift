@@ -87,6 +87,11 @@ public enum FalaSymbol {
   public static let offline = "wifi.slash"
   public static let exportJSON = "square.and.arrow.up"
   public static let importJSON = "square.and.arrow.down"
+  /// The two halves of a radio indicator (Ajustes › Modelo, engine picker).
+  /// Not in DESIGN-HANDOFF.md §5's map: the mockup predates the second engine,
+  /// so it draws no mutually-exclusive choice anywhere.
+  public static let radioSelected = "largecircle.fill.circle"
+  public static let radioUnselected = "circle"
 }
 
 // MARK: - Semantic token groups

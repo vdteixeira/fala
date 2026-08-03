@@ -113,6 +113,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     if let handler = resolved.dictionaryChanged {
       dictionary.onDictionaryChanged = handler
     }
+    if let handler = resolved.engineChanged {
+      model.onEngineChanged = handler
+    }
 
     if !window.setFrameUsingName(Self.frameAutosaveName) {
       window.center()
