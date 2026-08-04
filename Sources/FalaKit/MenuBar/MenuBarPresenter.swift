@@ -220,6 +220,22 @@ public final class MenuBarPresenter {
     model = .loading
   }
 
+  /// Progress updates for an activity that is ALREADY on screen — dropped when
+  /// none is. `reportModelProgress`/`reportModelLoading` begin an activity;
+  /// these update one. The distinction exists because updates arrive through
+  /// unstructured main-actor Tasks, so a late one can land after
+  /// `clearModelDownload` — and applying it would resurrect a bar that nothing
+  /// will ever clear again.
+  public func updateModelProgress(_ progress: ModelDownloadProgress) {
+    guard downloadOverride != nil else { return }
+    reportModelProgress(progress)
+  }
+
+  public func updateModelLoading() {
+    guard downloadOverride != nil else { return }
+    reportModelLoading()
+  }
+
   public func reportModelFailure() {
     downloadOverride = .failed
     model = .failed

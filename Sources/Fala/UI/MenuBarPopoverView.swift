@@ -401,9 +401,12 @@ private struct ModelBlockView: View {
       }
       if let fraction = block.progressFraction {
         ProgressTrackView(fraction: fraction, tint: style.tint)
-      } else if block.isDownloading {
-        // Size not known yet. The native indeterminate bar is the HIG answer and
-        // stops animating under Reduce Motion on its own.
+      } else if block.isBusy {
+        // Size not known yet, or nothing is being sized at all because this is a
+        // load. Either way the work is real and takes time — for Cohere, 97 s —
+        // so the bar moves. The label and the icon are what say which it is.
+        // The native indeterminate bar is the HIG answer and stops animating
+        // under Reduce Motion on its own.
         ProgressView()
           .progressViewStyle(.linear)
           .controlSize(.small)

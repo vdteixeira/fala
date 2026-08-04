@@ -150,7 +150,12 @@ struct HistoryWindowView: View {
       presenting: model.eraseConfirmation
     ) { confirmation in
       Button(confirmation.confirmTitle, role: .destructive) {
-        Task { await model.confirmEraseAll() }
+        // The confirmation is passed BY VALUE, and the call is synchronous.
+        // Wrapping this in a `Task` and letting the model re-read its own
+        // `eraseConfirmation` is what made "Apagar tudo" erase nothing: SwiftUI
+        // runs `eraseBinding`'s setter — `cancelEraseAll()` — as soon as any
+        // alert button is tapped, so the state was gone before the task ran.
+        model.eraseAllConfirmed(confirmation)
       }
       Button(confirmation.cancelTitle, role: .cancel) { model.cancelEraseAll() }
     } message: { confirmation in

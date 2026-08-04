@@ -207,26 +207,29 @@ final class DictationPipeline {
     // an engine you already have look like it was re-fetching 4,98 GB, when the
     // time was really Cohere's 97 s ANE warm-up.
     let isInstalled = ModelStatus.current(choice.modelLayout).isPresent
+    let epoch = beginModelActivity()
     if isInstalled {
       presenter.reportModelLoading()
     } else {
       presenter.reportModelProgress(.unknown)
     }
     // The progress handler is called off the main actor, so it hops back rather
-    // than capturing `self` across isolation domains.
+    // than capturing `self` across isolation domains. Each hop is its own
+    // unstructured Task, so "later" is undefined between them and the finish —
+    // which is why every path below re-checks the epoch on the main actor.
     let report: @Sendable (ModelDownloadStage) -> Void = { [weak self] stage in
       Task { @MainActor in
-        guard let self else { return }
+        guard let self, self.activeModelEpoch == epoch else { return }
         guard !isInstalled else {
           // Nothing is being fetched; the stages below would only misdescribe it.
-          self.presenter.reportModelLoading()
+          self.presenter.updateModelLoading()
           self.onEnginePreparation?(.loading)
           return
         }
         // The popover's block only understands a byte-ish progress; the stage's
         // own `progress` is `.unknown` outside `.transferring`, which draws an
         // indeterminate bar instead of a frozen 0%.
-        self.presenter.reportModelProgress(stage.progress)
+        self.presenter.updateModelProgress(stage.progress)
         self.onEnginePreparation?(stage)
       }
     }
@@ -235,13 +238,39 @@ final class DictationPipeline {
       Task { @MainActor [weak self] in
         do {
           try await engine.prepare(onStage: report)
-          self?.presenter.clearModelDownload()
-          self?.onEnginePreparationFinished?(nil)
+          guard let self, self.endModelActivity(epoch) else { return }
+          self.presenter.clearModelDownload()
+          self.onEnginePreparationFinished?(nil)
         } catch {
-          self?.presenter.reportModelFailure()
-          self?.onEnginePreparationFinished?(ModelPaneStrings.preparationFailed)
+          guard let self, self.endModelActivity(epoch) else { return }
+          self.presenter.reportModelFailure()
+          self.onEnginePreparationFinished?(ModelPaneStrings.preparationFailed)
         }
       })
+  }
+
+  /// Identity of the model activity currently allowed to touch the indicators.
+  ///
+  /// Bumped when a preparation starts, cleared when THAT preparation finishes.
+  /// Two orderings need it: a report Task that lands after its own finish (the
+  /// "Carregando o modelo… e não libera" report — the resurrected stage had no
+  /// finish left to clear it), and a launch-time `prepareModel` completing after
+  /// the user already switched engines, where the old finish would wipe the new
+  /// preparation's bar mid-run.
+  private var modelActivityEpoch = 0
+  private var activeModelEpoch: Int?
+
+  private func beginModelActivity() -> Int {
+    modelActivityEpoch += 1
+    activeModelEpoch = modelActivityEpoch
+    return modelActivityEpoch
+  }
+
+  /// True while `epoch` is still the activity on screen; ends it when finishing.
+  private func endModelActivity(_ epoch: Int) -> Bool {
+    guard activeModelEpoch == epoch else { return false }
+    activeModelEpoch = nil
+    return true
   }
 
   /// Set by `SettingsWindowBuilder` so the Modelo tab can draw the same bar.
@@ -443,6 +472,7 @@ final class DictationPipeline {
     // minute and a half passed behind a popover saying nothing at all.
     // Same distinction as `applyEngine`: at launch the model is usually already
     // there, and the wait is the load, not a transfer.
+    let epoch = beginModelActivity()
     if mustFetch {
       presenter.reportModelProgress(.unknown)
     } else {
@@ -452,9 +482,13 @@ final class DictationPipeline {
       Task { @MainActor [weak self] in
         do {
           try await engine.prepare()
-          self?.presenter.clearModelDownload()
+          // The user may have switched engines while this launch-time load ran;
+          // clearing then would wipe the NEW preparation's bar mid-run.
+          guard let self, self.endModelActivity(epoch) else { return }
+          self.presenter.clearModelDownload()
         } catch {
-          self?.presenter.reportModelFailure()
+          guard let self, self.endModelActivity(epoch) else { return }
+          self.presenter.reportModelFailure()
         }
       })
   }

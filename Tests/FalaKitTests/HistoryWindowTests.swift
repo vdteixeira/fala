@@ -495,17 +495,46 @@ struct HistoryWindowActionTests {
 struct HistoryWindowEraseTests {
 
   /// The requirement in the brief: "Apagar tudo" must SAY it is destructive
-  /// before doing it. Asserted structurally — `confirmEraseAll()` refuses
-  /// unless a confirmation was built first, so no view can shortcut it.
-  @Test("confirming without asking first erases nothing")
+  /// before doing it. Asserted structurally — `eraseAllConfirmed(_:)` cannot be
+  /// called without a `HistoryEraseConfirmation`, and only `requestEraseAll()`
+  /// can mint one (its initializer is internal), so no view can shortcut it.
+  @Test("erasing requires a confirmation only the model can produce")
   func eraseRequiresConfirmation() async {
     let history = FakeHistory([made("oi")])
     let model = makeModel([], history: history)
     await model.load()
 
-    await model.confirmEraseAll()
+    // Nothing erased while no confirmation has been requested.
+    #expect(model.eraseConfirmation == nil)
     #expect(await history.eraseCount == 0)
     #expect(model.totalCount == 1)
+  }
+
+  /// THE REGRESSION. Reported as "não está apagando tudo do histórico".
+  ///
+  /// SwiftUI clears an alert's `isPresented` the moment ANY of its buttons is
+  /// tapped, which runs the presentation binding's setter — `cancelEraseAll()`.
+  /// This reproduces that exact order: dismissal first, then the destructive
+  /// button's action. The erase must still happen.
+  @Test("the dismissal that SwiftUI runs on tap does not cancel the erase")
+  func dismissalDoesNotDefeatTheErase() async {
+    let history = FakeHistory([made("uma"), made("outra")])
+    let model = makeModel([], history: history)
+    await model.load()
+
+    model.requestEraseAll()
+    let confirmation = try! #require(model.eraseConfirmation)
+
+    // What the `isPresented` binding does when the alert goes away.
+    model.cancelEraseAll()
+    #expect(model.eraseConfirmation == nil)
+
+    // ...and only then the button's action, holding the value it was built with.
+    await model.eraseAllConfirmed(confirmation).value
+
+    #expect(await history.eraseCount == 1, "the erase never reached the store")
+    #expect(model.totalCount == 0)
+    #expect(model.days.isEmpty)
   }
 
   @Test("the confirmation states what is about to be destroyed")
@@ -530,7 +559,8 @@ struct HistoryWindowEraseTests {
     model.requestEraseAll()
     model.cancelEraseAll()
     #expect(model.eraseConfirmation == nil)
-    await model.confirmEraseAll()
+    // Cancel really cancels: the value never left the model, so there is nothing
+    // to call `eraseAllConfirmed(_:)` with.
     #expect(await history.eraseCount == 0)
   }
 
@@ -542,7 +572,7 @@ struct HistoryWindowEraseTests {
     let model = makeModel([], history: history)
     await model.load()
     model.requestEraseAll()
-    await model.confirmEraseAll()
+    await model.eraseAllConfirmed(try! #require(model.eraseConfirmation)).value
 
     #expect(await history.eraseCount == 1)
     #expect(model.totalCount == 0)
@@ -559,7 +589,7 @@ struct HistoryWindowEraseTests {
     let model = makeModel([], history: history)
     await model.load()
     model.requestEraseAll()
-    await model.confirmEraseAll()
+    await model.eraseAllConfirmed(try! #require(model.eraseConfirmation)).value
     #expect(model.notice?.kind == .error)
     #expect(model.notice?.message.contains("history.json") == true)
     #expect(model.notice?.message.contains("/Users") == false, "no path, no account name")

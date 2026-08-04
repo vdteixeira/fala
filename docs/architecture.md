@@ -738,3 +738,131 @@ out to be incomplete still hands over to the real download stages.
 `ModelBlock.isDownloading` deliberately stays narrow — a caller that means "bytes
 are moving" must not catch a load — so `isBusy` was added for callers that mean
 "work in progress of any kind".
+
+### "Apagar tudo" fechava o alerta e não apagava nada (2026-08-03)
+
+Reported with 45 real transcripts still on disk, spanning the whole day, after
+confirming the destructive alert.
+
+Every layer below the view was already correct, and provably so: a real
+`DictationHistoryStore` on disk erases both files, empties its cache, survives
+being reopened, and does not resurrect anything on the next `record()`. The
+`HistoryWindowModel` clears its index, its day groups and its counts. New tests
+pin all of that against a real store rather than `FakeHistory`.
+
+The defect was one interaction in `HistoryWindow.swift`:
+
+```swift
+Button(confirmation.confirmTitle, role: .destructive) {
+  Task { await model.confirmEraseAll() }        // ← async
+}
+...
+private var eraseBinding: Binding<Bool> {
+  Binding(
+    get: { model.eraseConfirmation != nil },
+    set: { if !$0 { model.cancelEraseAll() } }) // ← runs on ANY button tap
+}
+```
+
+SwiftUI clears an alert's `isPresented` the moment any of its buttons is tapped —
+including the destructive one. That runs the binding's setter, which calls
+`cancelEraseAll()` and nils `eraseConfirmation`. By the time the button's `Task`
+started, `confirmEraseAll()`'s first line
+
+```swift
+guard eraseConfirmation != nil else { return }
+```
+
+found nil and returned. The alert closed, a success notice never appeared, and
+the history was completely intact.
+
+**The guard was written to make the promise structural** — "no view can erase
+without having shown the alert". It did the opposite: it made the erase depend on
+mutable state that the view layer clears as part of normal dismissal.
+
+The fix keeps the guarantee and moves it into the type system. `eraseAllConfirmed(_:)`
+takes the `HistoryEraseConfirmation` **by value** — the one the alert was built
+with, captured before any dismissal — and `HistoryEraseConfirmation.init` is no
+longer public, so only `requestEraseAll()` can mint one. Ordering stops mattering:
+there is no shared mutable state left for the dismissal to win a race against.
+
+The regression test drives the two in the order SwiftUI actually uses — dismissal
+first, action second — and fails with `eraseCount == 0` against the old code.
+
+#### Why 1047 tests missed it
+
+Every existing test called `requestEraseAll()` and then `confirmEraseAll()` back
+to back, which is the order the *model* defines, not the order the *view*
+produces. Nothing exercised the binding. This is the fourth shape of the same
+recurring defect: correct library code, and a call site that does something the
+tests never model. The first three are recorded above.
+
+### "Fica marcando baixando" — a segunda vez, e o ícone era a causa (2026-08-03)
+
+Reported again after `ModelDownloadStage.loading` had already fixed the wording.
+The label really did say "Carregando o modelo…". Three other things in the same
+row still said download, and they won:
+
+1. **A pulsing download arrow.** `SettingsModelTab.downloadRow` drew
+   `DownloadPulseIcon()` — hardcoded `FalaSymbol.download` — for every stage. An
+   icon beats a label; the row read as a transfer no matter what the text said.
+2. **A "Cancelar" button**, permanently disabled during a load (there is nothing
+   to cancel). A dead control beside a moving bar does not read as "no transfer
+   is running"; it reads as "a transfer you may not stop".
+3. **`ModelPane.isDownloading` was `stage != nil`** — true during a load. Every
+   caller asking "is this a download?" got yes.
+
+Split into two questions instead of one: `isBusy` (any stage — drives whether the
+row is on screen) and `isDownloading` (bytes are actually moving — drives
+everything that says "download" to the user). `progressSymbol` follows the second
+one, so the glyph is `cpu` for a load and `arrow.down.circle` for a transfer, and
+`isCancelOffered` removes the control entirely rather than disabling it.
+
+The popover's indeterminate bar now runs on `isBusy` rather than `isDownloading`:
+a 97 s load with no motion at all looks frozen, and the label and glyph are what
+say which kind of work it is.
+
+**And the two surfaces were deciding it from different sources.** The tab read the
+CACHED `engineStatus` map while the popover read `ModelStatus.current(...)` fresh
+off disk, so a model downloaded after the settings window opened could have the
+tab calling the same click a download and the popover calling it a load. The tab
+now reads fresh through the same injected reader its rows are built from — the
+"value read from a source OTHER than the one the rest of the type reads" pattern,
+which this file already records twice.
+
+### "Somente fica Carregando o modelo… e não libera" (2026-08-03)
+
+The loading state introduced earlier the same day could get stuck on screen
+forever. The preparation itself completed fine — the INDICATOR outlived it.
+
+Every stage report crosses to the main actor in its own unstructured `Task`, and
+the finish (`clearModelDownload` + `finishEnginePreparation`) arrives by a
+different path: the continuation of `await engine.prepare(onStage:)`. "Later" is
+undefined between independent tasks, so a report spawned just before `prepare()`
+returned could land AFTER the finish. Applying it re-showed the stage — and
+nothing was left to clear it, because the finish had already run. In the
+installed-model case every report maps to `.loading`, so losing that race once
+froze "Carregando o modelo…" permanently. Parakeet's ~1 s preparation emits its
+last report microseconds before completing, which is why the race was lost
+consistently rather than occasionally.
+
+`ModelDownloadController.apply` has guarded against exactly this since it was
+written — `guard task != nil` — because its reports arrive the same way. The
+engine-preparation path was newer and lacked the guard. The classic shape:
+the OLD path knew the trap, the NEW path reintroduced it.
+
+Three layers now enforce ordering, two of them tested:
+
+1. **`ModelPanePresenter.reportEnginePreparation`** drops reports while no
+   preparation is active (`enginePreparation == nil`). A legitimate first report
+   can never precede `selectEngine`, which sets the stage synchronously.
+2. **`MenuBarPresenter`** separates *beginning* an activity
+   (`reportModelLoading` / `reportModelProgress`) from *updating* one
+   (`updateModelLoading` / `updateModelProgress`, which drop when nothing is on
+   screen). The pipeline's report closure uses only the update forms.
+3. **`DictationPipeline` keeps an activity epoch.** Reports and finishes both
+   re-check it on the main actor, so a superseded preparation — a launch-time
+   `prepareModel` completing after the user already switched engines, or a
+   double engine switch — can neither repaint nor wipe the newer activity's bar.
+   (The epoch lives in the executable target; the presenter guards are the
+   testable invariant, and both were verified by mutation.)

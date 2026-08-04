@@ -324,11 +324,36 @@ public struct ModelPane: Sendable, Equatable {
   /// Non-nil only for `.replace`, which deletes the working model first.
   public var confirmationMessage: String? { intent.confirmationMessage }
 
-  public var isActionEnabled: Bool { !isDownloading && !hasInsufficientSpace }
+  public var isActionEnabled: Bool { !isBusy && !hasInsufficientSpace }
 
   // MARK: - The in-progress row
 
-  public var isDownloading: Bool { stage != nil }
+  /// Any stage is running — a transfer OR a load. Drives whether the in-progress
+  /// row is on screen at all.
+  public var isBusy: Bool { stage != nil }
+
+  /// Bytes are actually moving. NARROWER than `isBusy` on purpose: `.loading` is
+  /// a CoreML open plus, for Cohere, a 97 s ANE warm-up, with nothing being
+  /// fetched. Anything that says "download" to the user must ask this one.
+  public var isDownloading: Bool {
+    guard let stage else { return false }
+    return stage != .loading
+  }
+
+  /// The glyph beside the in-progress row.
+  ///
+  /// A pulsing download arrow was drawn for EVERY stage, so switching to a model
+  /// already on disk showed "Carregando o modelo…" next to a downloading icon —
+  /// and the icon won. Reported twice as "fica marcando baixando".
+  public var progressSymbol: String {
+    isDownloading ? FalaSymbol.download : FalaSymbol.processor
+  }
+
+  /// Whether "Cancelar" is offered at all.
+  ///
+  /// A load has nothing to cancel, and a permanently disabled "Cancelar" beside
+  /// a moving progress bar reads as a transfer the user is not allowed to stop.
+  public var isCancelOffered: Bool { isDownloading }
 
   /// "Baixando novamente… 41%" — the mockup's line, with the verb matching the
   /// button that started it, plus the two stages the mockup does not draw and
@@ -378,12 +403,13 @@ public struct ModelPane: Sendable, Equatable {
   /// alone is invisible to it.
   public var cancelUnavailableHint: String? {
     guard isDownloading, !isCancelEnabled, !isCancelling else { return nil }
+    // Only for a real transfer; a load never offers the control at all.
     return ModelPaneStrings.cancelUnavailable
   }
 
   /// "Download cancelado." or a failure message, once the row is gone.
   public var outcomeMessage: String? {
-    isDownloading ? nil : outcome?.message
+    isBusy ? nil : outcome?.message
   }
 
   // MARK: - The free-space line
@@ -560,8 +586,12 @@ public final class ModelPanePresenter {
     // Both need SOME immediate feedback — the click has to do something visible —
     // but showing a download for a model that is already on disk is what made
     // switching to an installed engine look like a second 4,98 GB transfer.
-    enginePreparation =
-      (engineStatus[choice] ?? Self.absent(choice)).isPresent ? .loading : .preparing
+    // Read FRESH through the same reader the rows are built from, not from the
+    // cached map. The cache is refreshed when the window opens, but a model
+    // downloaded since then would leave it saying "not there" — and the popover
+    // decides this from a fresh disk read, so the two surfaces would disagree
+    // about whether the very same click is a download.
+    enginePreparation = engineStatusReader(choice).isPresent ? .loading : .preparing
     enginePreparationFailure = nil
     onEngineChanged?(choice)
   }
@@ -572,6 +602,14 @@ public final class ModelPanePresenter {
   /// novamente" button: this is the download that starts because the user
   /// switched engines, and it has no button of its own to hang off.
   public func reportEnginePreparation(_ stage: ModelDownloadStage) {
+    // Dropped unless a preparation is actually on screen. Every report crosses
+    // to the main actor in its own unstructured Task, so one spawned just
+    // before `prepare()` returned can land AFTER `finishEnginePreparation` —
+    // and re-showing the stage then leaves "Carregando o modelo…" on screen
+    // forever, because the finish that would clear it has already run.
+    // `ModelDownloadController.apply` has guarded against exactly this
+    // (`task != nil`) since it was written; this path lacked it.
+    guard enginePreparation != nil else { return }
     enginePreparation = stage
   }
 

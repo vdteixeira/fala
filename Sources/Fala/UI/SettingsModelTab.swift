@@ -48,7 +48,7 @@ struct SettingsModelTab: View {
       if let detail = pane.problemDetail {
         SettingsCaption(text: detail, isProblem: true)
       }
-      if pane.isDownloading {
+      if pane.isBusy {
         downloadRow(pane)
       }
       if let outcome = pane.outcomeMessage {
@@ -59,7 +59,7 @@ struct SettingsModelTab: View {
     // On appear only: `ModelStatus.current()` enumerates the whole model
     // directory, and a view body would run it on every progress tick.
     .onAppear { presenter.refresh() }
-    .animation(theme.motion.quick, value: pane.isDownloading)
+    .animation(theme.motion.quick, value: pane.isBusy)
     .confirmationDialog(
       pane.confirmationMessage ?? "",
       isPresented: $isConfirmingReplace,
@@ -210,7 +210,7 @@ struct SettingsModelTab: View {
   private func downloadRow(_ pane: ModelPane) -> some View {
     VStack(alignment: .leading, spacing: theme.space.xxs) {
       HStack(spacing: theme.space.xs) {
-        DownloadPulseIcon()
+        ProgressPulseIcon(symbol: pane.progressSymbol)
         Text(pane.downloadTitle ?? "")
           .font(SettingsType.softButton.font)
           .foregroundStyle(theme.color.text.primary)
@@ -220,11 +220,16 @@ struct SettingsModelTab: View {
             .foregroundStyle(theme.color.text.tertiary)
         }
         Spacer(minLength: theme.space.xxs)
-        Button(pane.cancelTitle) { presenter.cancelDownload() }
-          .buttonStyle(.link)
-          .font(SettingsType.softButton.font)
-          .disabled(!pane.isCancelEnabled)
-          .accessibilityHint(pane.cancelUnavailableHint ?? "")
+        // Offered only for a real transfer. There is nothing to stop during a
+        // load, and a dead control beside a moving bar reads as a download the
+        // user may not cancel.
+        if pane.isCancelOffered {
+          Button(pane.cancelTitle) { presenter.cancelDownload() }
+            .buttonStyle(.link)
+            .font(SettingsType.softButton.font)
+            .disabled(!pane.isCancelEnabled)
+            .accessibilityHint(pane.cancelUnavailableHint ?? "")
+        }
       }
       SettingsProgressTrack(
         fraction: pane.progressFraction, tint: theme.color.state.transcribing)
@@ -263,12 +268,15 @@ struct SettingsModelTab: View {
 /// "animation: fala-pulse 1.6s infinite" on the download glyph. Decorative per
 /// the mockup's own footer, so it is hidden from VoiceOver — and it does not
 /// animate at all under Reduce Motion, where `theme.motion.pulse` is nil.
-private struct DownloadPulseIcon: View {
+private struct ProgressPulseIcon: View {
   @Environment(\.theme) private var theme
   @State private var isDim = false
 
+  /// The download arrow only when bytes move — see `ModelPane.progressSymbol`.
+  let symbol: String
+
   var body: some View {
-    Image(systemName: FalaSymbol.download)
+    Image(systemName: symbol)
       .font(.system(size: SettingsLayout.tabIconSize))
       .foregroundStyle(theme.color.state.transcribing)
       .opacity(isDim ? 0.5 : 1)

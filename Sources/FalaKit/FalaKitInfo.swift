@@ -2,5 +2,5 @@
 /// Real modules (Transcription/, Audio/, Hotkey/, Injection/, PostProcess/,
 /// Permissions/, Theme/) land in Phases 1–2 per TASKS.md.
 public enum FalaKitInfo {
-  public static let version = "0.2.0"
+  public static let version = "0.2.1"
 }

@@ -133,7 +133,11 @@ public struct HistoryNotice: Sendable, Equatable {
 public struct HistoryEraseConfirmation: Sendable, Equatable {
   public let entryCount: Int
 
-  public init(entryCount: Int) {
+  /// NOT public. Only `HistoryWindowModel.requestEraseAll()` can mint one, and
+  /// `eraseAllConfirmed(_:)` requires one — so "the alert was shown" is enforced
+  /// by the type system rather than by a mutable flag the view layer can clear
+  /// out from under the erase. It could, and did: see `eraseAllConfirmed(_:)`.
+  init(entryCount: Int) {
     self.entryCount = entryCount
   }
 
@@ -438,13 +442,28 @@ public final class HistoryWindowModel {
     eraseConfirmation = nil
   }
 
-  /// The only path that erases. Reachable only after `requestEraseAll()` built
-  /// a confirmation, so "Apagar tudo" cannot fire without the alert having been
-  /// shown — the guard is what makes the promise structural rather than a
-  /// convention the view has to remember.
-  public func confirmEraseAll() async {
-    guard eraseConfirmation != nil else { return }
+  /// The only path that erases. Takes the confirmation the alert is displaying,
+  /// which only `requestEraseAll()` can have produced — so "Apagar tudo" still
+  /// cannot fire without the alert having been shown.
+  ///
+  /// It used to read the model's own `eraseConfirmation` and refuse when it was
+  /// nil, and THAT is why "Apagar tudo" erased nothing. SwiftUI clears an
+  /// alert's `isPresented` the moment ANY of its buttons is tapped, including
+  /// the destructive one; that runs the presentation binding's setter, which
+  /// calls `cancelEraseAll()`. The confirmation was therefore already nil by the
+  /// time the button's `Task` ran, the guard refused, and the alert closed over
+  /// a history that was still completely intact.
+  ///
+  /// Passing the value sidesteps the ordering entirely: it was captured when the
+  /// alert was built and cannot be cleared by anything the dismissal does. The
+  /// task is returned so a caller can await the work.
+  @discardableResult
+  public func eraseAllConfirmed(_ confirmation: HistoryEraseConfirmation) -> Task<Void, Never> {
     eraseConfirmation = nil
+    return Task { [weak self] in await self?.performEraseAll() }
+  }
+
+  private func performEraseAll() async {
     isWorking = true
     defer { isWorking = false }
     do {

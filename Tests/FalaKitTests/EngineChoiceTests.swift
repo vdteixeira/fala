@@ -646,12 +646,80 @@ struct ModelPaneEngineTests {
     #expect(presenter.pane.downloadDetail.isEmpty)
   }
 
+  /// THE REGRESSION behind "somente fica Carregando o modelo… e não libera".
+  ///
+  /// Every stage report crosses to the main actor in its own unstructured Task,
+  /// so one spawned just before `prepare()` returned can land AFTER the finish.
+  /// Applying it re-showed the stage — and nothing was left to clear it, so the
+  /// row stayed on "Carregando o modelo…" forever. A report with no active
+  /// preparation must be dropped.
+  @Test("A report landing after the finish does not resurrect the bar")
+  func lateReportDoesNotResurrectTheBar() {
+    let (presenter, _) = Self.presenter(cohere: .ready)
+    presenter.selectEngine(.cohere)
+    #expect(presenter.pane.stage == .loading)
+
+    presenter.finishEnginePreparation(error: nil)
+    #expect(presenter.pane.stage == nil)
+
+    // The straggler — the exact report the race delivers late.
+    presenter.reportEnginePreparation(.loading)
+
+    #expect(presenter.pane.stage == nil, "resurrected: the bar will never clear")
+    #expect(!presenter.pane.isBusy)
+  }
+
+  /// And with nothing selected at all, a stray report shows nothing either.
+  @Test("A report with no preparation in progress is ignored")
+  func strayReportIsIgnored() {
+    let (presenter, _) = Self.presenter()
+    presenter.reportEnginePreparation(
+      .transferring(ModelDownloadProgress(receivedBytes: 3, totalBytes: 21, unit: .files)))
+    #expect(presenter.pane.stage == nil)
+  }
+
+  /// The word was fixed once and the SYMBOL still said the opposite: the tab drew
+  /// a pulsing download arrow for every stage, plus a "Cancelar" button, so
+  /// "Carregando o modelo…" still read as a download. Reported twice.
+  @Test("Nothing in the loading row claims a transfer")
+  func loadingRowClaimsNoTransfer() {
+    let (presenter, _) = Self.presenter(cohere: .ready)
+    presenter.selectEngine(.cohere)
+    let pane = presenter.pane
+
+    #expect(pane.stage == .loading)
+    #expect(pane.isBusy, "the row must still be on screen")
+    #expect(!pane.isDownloading, "a load is not a download")
+    #expect(pane.progressSymbol == FalaSymbol.processor)
+    #expect(pane.progressSymbol != FalaSymbol.download)
+    // Nothing to stop, so nothing is offered — a dead "Cancelar" beside a moving
+    // bar reads as a transfer the user may not cancel.
+    #expect(!pane.isCancelOffered)
+    #expect(!pane.isCancelEnabled)
+  }
+
+  /// A real transfer keeps every one of those affordances.
+  @Test("A real transfer still shows the download arrow and Cancelar")
+  func realTransferKeepsItsAffordances() {
+    let (presenter, _) = Self.presenter(cohere: .notDownloaded)
+    presenter.selectEngine(.cohere)
+    presenter.reportEnginePreparation(
+      .transferring(ModelDownloadProgress(receivedBytes: 3, totalBytes: 21, unit: .files)))
+    let pane = presenter.pane
+
+    #expect(pane.isBusy)
+    #expect(pane.isDownloading)
+    #expect(pane.progressSymbol == FalaSymbol.download)
+    #expect(pane.isCancelOffered)
+  }
+
   /// And the popover's block must agree: it is the surface that said "Baixando
   /// modelo…" for the whole 97 s.
   @Test("The popover block distinguishes loading from downloading")
   func popoverBlockDistinguishesLoading() {
     #expect(!ModelBlock.loading.isDownloading)
     #expect(ModelBlock.loading.isBusy)
+    #expect(ModelBlock.loading.symbol == FalaSymbol.processor)
     #expect(ModelBlock.loading.progressFraction == nil)
 
     let title = ModelBlock.loading.title(engine: "Cohere")

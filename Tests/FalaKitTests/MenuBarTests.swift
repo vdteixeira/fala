@@ -777,6 +777,42 @@ private func makeStatus(present: Bool, bytes: Int64? = 1_100_000_000) -> ModelSt
       clock: { Date(timeIntervalSince1970: 1_000_000) })
   }
 
+  /// The popover half of "Carregando o modelo… e não libera": an update landing
+  /// after `clearModelDownload` re-created the override, and no finish was left
+  /// to remove it. Updates are dropped when no activity is on screen; only
+  /// `reportModelLoading`/`reportModelProgress` may begin one.
+  @Test("a late update does not resurrect the popover's model activity")
+  func lateUpdateDoesNotResurrectTheOverride() async {
+    let presenter = makePresenter(modelPresent: true)
+    presenter.reportModelLoading()
+    #expect(presenter.model == .loading)
+
+    presenter.clearModelDownload()
+    #expect(presenter.model != .loading)
+
+    presenter.updateModelLoading()
+    presenter.updateModelProgress(.unknown)
+    #expect(presenter.model != .loading, "resurrected: nothing will clear it")
+    #expect(!presenter.model.isBusy)
+
+    // And a refresh goes back to reading the disk, exactly as before.
+    await presenter.refresh()
+    #expect(presenter.modelTitle == "Modelo Parakeet · pronto")
+  }
+
+  /// Updates still work while an activity IS on screen.
+  @Test("updates apply while the activity is on screen")
+  func updatesApplyWhileActive() {
+    let presenter = makePresenter(modelPresent: false)
+    presenter.reportModelProgress(.unknown)
+    let progress = ModelDownloadProgress(receivedBytes: 3, totalBytes: 21, unit: .files)
+    presenter.updateModelProgress(progress)
+    #expect(presenter.model == .downloading(progress))
+
+    presenter.updateModelLoading()
+    #expect(presenter.model == .loading)
+  }
+
   /// Reported as "na tela de destaque aparece Parakeet e vem de Cohere": the
   /// block's name was the constant "Parakeet" while the status under it was
   /// measured in the SELECTED engine's directory. A row whose two halves
